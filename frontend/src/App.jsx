@@ -14,6 +14,11 @@ import AdminUsers from "./pages/AdminUsers";
 import AdminWallet from "./pages/AdminWallet";
 import AdminComments from "./pages/AdminComments";
 
+import Wallet from "./pages/Wallet";
+import Notifications from "./pages/Notifications";
+import Profile from "./pages/Profile";
+
+import AppLayout from "./components/AppLayout";
 import { AuthProvider } from "./context/AuthContext";
 
 function App() {
@@ -22,28 +27,49 @@ function App() {
       <AuthProvider>
         <Routes>
 
-          {/* 🌍 Public Routes */}
+          {/* 🌍 Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* 🔐 Protected User Routes */}
+          {/* 🔐 Authenticated User Layout */}
           <Route
-            path="/"
             element={
               <PrivateRoute>
-                <Dashboard />
+                <AppLayout />
               </PrivateRoute>
             }
-          />
+          >
+            <Route path="/" element={<Dashboard />} />
 
-          <Route
-            path="/polls/:id"
-            element={
-              <PrivateRoute>
-                <PollDetail />
-              </PrivateRoute>
-            }
-          />
+            <Route path="/polls/:id" element={<PollDetail />} />
+            <Route
+              path="/wallet"
+              element={
+                <PrivateRoute>
+                  <Wallet />
+                </PrivateRoute>
+              }
+            />
+
+            <Route
+              path="/profile"
+              element={
+                <PrivateRoute>
+                  <Profile />
+                </PrivateRoute>
+              }
+            />
+
+            <Route
+              path="/notifications"
+              element={
+                <PrivateRoute>
+                  <Notifications />
+                </PrivateRoute>
+              }
+            />
+
+          </Route>
 
           {/* 🛠 Admin Dashboard */}
           <Route

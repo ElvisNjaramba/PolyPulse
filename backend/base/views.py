@@ -217,6 +217,27 @@ class NotificationListView(APIView):
             }
             for n in notifications
         ])
+    
+class NotificationReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        notification = Notification.objects.get(
+            id=id,
+            user=request.user
+        )
+        notification.is_read = True
+        notification.save()
+        return Response({"success": True})
+
+
+class NotificationReadAllView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request.user.notifications.update(is_read=True)
+        return Response({"success": True})
+
 
 class PollCommentView(APIView):
     permission_classes = [IsAuthenticated]
