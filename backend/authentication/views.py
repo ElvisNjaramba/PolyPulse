@@ -14,10 +14,13 @@ class AuthViewSet(viewsets.ViewSet):
     permission_classes = [permissions.AllowAny]
 
     def create(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        serializer = RegisterSerializer(
+            data=request.data,
+            context={"request": request}  # ✅ pass request
+        )
 
         if not serializer.is_valid():
-            print(serializer.errors)   # 👈 ADD THIS
+            print(serializer.errors)
             return Response(serializer.errors, status=400)
 
         serializer.save()

@@ -147,12 +147,12 @@ class EmailVerifiedTokenSerializer(TokenObtainPairSerializer):
         device_fp = request.headers.get("X-Device-Fingerprint", "unknown") if request else "unknown"
         ip = request.META.get("REMOTE_ADDR") if request else "0.0.0.0"
 
-        UserSession.objects.create(
+        session = UserSession.objects.create(
             user=user,
             device_fingerprint=device_fp,
             ip_address=ip,
         )
 
         # Return tokens
-        tokens = get_tokens_for_user(user)
+        tokens = get_tokens_for_user(user, session)
         return tokens

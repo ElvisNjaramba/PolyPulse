@@ -17,6 +17,8 @@ import AdminComments from "./pages/AdminComments";
 import Wallet from "./pages/Wallet";
 import Notifications from "./pages/Notifications";
 import Profile from "./pages/Profile";
+import VerifyEmail from "./pages/VerifyEmail";
+import CheckEmail from "./pages/CheckEmail";
 
 import AppLayout from "./components/AppLayout";
 import { AuthProvider } from "./context/AuthContext";
@@ -30,6 +32,8 @@ function App() {
           {/* 🌍 Public */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/check-email" element={<CheckEmail />} />
+          <Route path="/verify-email/:token" element={<VerifyEmail />} />
 
           {/* 🔐 Authenticated User Layout */}
           <Route

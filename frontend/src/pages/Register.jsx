@@ -21,7 +21,7 @@ const Register = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-    const fingerprint = getDeviceFingerprint();
+  const fingerprint = getDeviceFingerprint();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,22 +29,28 @@ const Register = () => {
     setSuccess("");
 
     try {
-      await axios.post("auth/register/", {
-  ...formData,
-}, {
-  headers: {
-    "X-Device-Fingerprint": fingerprint,
-  },
-});
+      await axios.post(
+        "auth/register/",
+        { ...formData },
+        {
+          headers: {
+            "X-Device-Fingerprint": fingerprint,
+          },
+        }
+      );
 
-      setSuccess("Account created successfully. Redirecting to login...");
+      setSuccess("Account created successfully!");
 
-      setTimeout(() => {
-        navigate("/login");
-      }, 1500);
+      // Redirect to email verification page
+setTimeout(() => {
+  navigate("/check-email", { state: { email: formData.email } });
+}, 1000);
+
     } catch (err) {
+      console.error(err);
       setError(
         err.response?.data?.detail ||
+        err.response?.data?.non_field_errors?.[0] ||
         "Registration failed. Check your inputs."
       );
     }
