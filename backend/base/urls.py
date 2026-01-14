@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import CommentLikeToggle, NotificationListView, NotificationReadAllView, NotificationReadView, PollCommentView, PollCreateView, PollDetailView, PollListView, PlaceBetView, PollResolveView, PollSuspendView, LeaderboardView
+from .views import CommentLikeToggle, NotificationListView, NotificationReadAllView, NotificationReadView, PollCommentView, PollCreateView, PollDetailView, PollListView, PlaceBetView, PollResolveView, PollSuspendView, LeaderboardView, SellSharesView, profile_view, user_positions
 
 urlpatterns = [
     path("polls/", PollListView.as_view(), name="poll-list"),
@@ -15,6 +15,11 @@ urlpatterns = [
     path("notifications/", NotificationListView.as_view()),
     path("notifications/<int:id>/read/", NotificationReadView.as_view()),
     path("notifications/read-all/", NotificationReadAllView.as_view()),
+
+    path("polls/<int:poll_id>/sell/", SellSharesView.as_view()),
+
+    path("positions/", user_positions),
+    path("positions/", profile_view),
 
 
 ]

@@ -1,12 +1,141 @@
 from rest_framework import serializers
-from .models import Notification, Poll, PollComment, PollOption, Bet
+
+from wallet.models import WalletTransaction
+from .models import MarketPosition, Notification, Poll, PollComment, PollOption, Bet
 from django.db.models import Sum
+from .models import Market
 
 class PollOptionSerializer(serializers.ModelSerializer):
+    price = serializers.SerializerMethodField()
+    user_shares = serializers.SerializerMethodField()
+    total_shares = serializers.SerializerMethodField()
+    avg_price = serializers.SerializerMethodField()
+    pnl = serializers.SerializerMethodField()
+
     class Meta:
         model = PollOption
-        fields = ["text"]
+        fields = [
+            "id",
+            "text",
+            "price",
+            "user_shares",
+            "total_shares",
+            "avg_price",
+            "pnl",
+        ]
 
+    def get_price(self, obj):
+        market = obj.poll.market
+        is_yes = obj.is_yes()
+        return round(
+            market.price_yes() if is_yes else market.price_no(),
+            4
+        )
+
+    def get_user_shares(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return 0
+
+        market = obj.poll.market
+        position = MarketPosition.objects.filter(
+            user=request.user,
+            market=market
+        ).first()
+
+        if not position:
+            return 0
+
+        return round(
+            position.yes_shares if obj.is_yes() else position.no_shares,
+            4
+        )
+
+    def get_total_shares(self, obj):
+        market = obj.poll.market
+        return round(
+            market.yes_shares if obj.is_yes() else market.no_shares,
+            4
+        )
+
+    def get_avg_price(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return 0
+
+        position = MarketPosition.objects.filter(
+            user=request.user,
+            market=obj.poll.market
+        ).first()
+
+        if not position:
+            return 0
+
+        return round(
+            position.avg_yes_price()
+            if obj.is_yes()
+            else position.avg_no_price(),
+            4
+        )
+
+
+    def get_pnl(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return 0
+
+        market = obj.poll.market
+        position = MarketPosition.objects.filter(
+            user=request.user,
+            market=market
+        ).first()
+
+        if not position:
+            return 0
+
+        if obj.is_yes():
+            shares = position.yes_shares
+            spent = position.yes_spent
+            price = market.price_yes()
+        else:
+            shares = position.no_shares
+            spent = position.no_spent
+            price = market.price_no()
+
+        value = shares * price
+        return round(value - spent, 2)
+
+class PollDetailSerializer(serializers.ModelSerializer):
+    options = PollOptionSerializer(many=True)
+    can_accept_bets = serializers.SerializerMethodField()
+    total_pool = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Poll
+        fields = [
+            "id",
+            "title",
+            "description",
+            "is_free",
+            "min_bet",
+            "status",
+            "closes_at",
+            "can_accept_bets",
+            "total_pool",
+            "options",
+        ]
+
+    def get_can_accept_bets(self, obj):
+        return obj.can_accept_bets()
+
+    def get_total_pool(self, obj):
+        return (
+            WalletTransaction.objects.filter(
+                related_poll=obj,
+                transaction_type="bet"
+            ).aggregate(total=Sum("amount"))["total"]
+            or 0
+        )
 
 class PollCreateSerializer(serializers.ModelSerializer):
     options = PollOptionSerializer(many=True)
@@ -24,9 +153,13 @@ class PollCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_options(self, value):
-        if len(value) < 2:
-            raise serializers.ValidationError("At least two options are required.")
+        texts = {opt["text"].lower() for opt in value}
+        if texts != {"yes", "no"}:
+            raise serializers.ValidationError(
+                "Market polls must have exactly two options: Yes and No"
+            )
         return value
+
 
     def create(self, validated_data):
         options_data = validated_data.pop("options")
@@ -42,6 +175,11 @@ class PollCreateSerializer(serializers.ModelSerializer):
                 poll=poll,
                 text=option["text"]
             )
+
+        Market.objects.create(
+            poll=poll,
+            liquidity_b=100.0
+        )
 
         return poll
 
@@ -82,6 +220,13 @@ class BetCreateSerializer(serializers.ModelSerializer):
         amount = data.get("amount", 0)
         user = self.context["request"].user
         profile = user.profile
+        market = poll.market
+        price = market.price_yes() if option == poll.options.first() else market.price_no()
+
+        if amount > market.liquidity_b * 2:
+            raise serializers.ValidationError(
+                "Order too large — split into smaller trades."
+            )
 
         if option.poll_id != poll.id:
             raise serializers.ValidationError("Invalid option for this poll.")
@@ -108,72 +253,58 @@ class BetCreateSerializer(serializers.ModelSerializer):
         return data
 
 class PollOptionDetailSerializer(serializers.ModelSerializer):
-    total_bet = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
 
     class Meta:
         model = PollOption
-        fields = ["id", "text", "total_bet"]
+        fields = ["id", "text", "price"]
 
-    def get_total_bet(self, obj):
-        total = obj.bets.aggregate(total=Sum("amount"))["total"]
-        return total or 0
+    def get_price(self, obj):
+        market = obj.poll.market
+        is_yes = obj == obj.poll.options.first()
+        return round(
+            market.price_yes() if is_yes else market.price_no(),
+            4
+        )
 
+# base/serializers.py
 
-class PollDetailSerializer(serializers.ModelSerializer):
-    creator = serializers.StringRelatedField()
-    category = serializers.StringRelatedField()
-    options = PollOptionDetailSerializer(many=True)
-
-    total_pool = serializers.SerializerMethodField()
-    user_bet = serializers.SerializerMethodField()
-    can_accept_bets = serializers.SerializerMethodField()
-    status = serializers.CharField(read_only=True)
+class MarketOptionSerializer(serializers.ModelSerializer):
+    price = serializers.SerializerMethodField()
+    user_shares = serializers.SerializerMethodField()
 
     class Meta:
-        model = Poll
-        fields = [
-            "id",
-            "title",
-            "description",
-            "creator",
-            "category",
-            "is_free",
-            "min_bet",
-            "closes_at",
-            "created_at",
-            "status",
-            "can_accept_bets",
-            "options",
-            "total_pool",
-            "user_bet",
-        ]
+        model = PollOption
+        fields = ["id", "text", "price", "user_shares"]
 
-    def get_total_pool(self, obj):
-        total = obj.bets.aggregate(total=Sum("amount"))["total"]
-        return total or 0
+    def get_price(self, obj):
+        market = obj.poll.market
+        return (
+            market.price_yes()
+            if obj.text.lower() == "yes"
+            else market.price_no()
+        )
 
-    def get_user_bet(self, obj):
+    def get_user_shares(self, obj):
         request = self.context.get("request")
-
         if not request or not request.user.is_authenticated:
-            return None
+            return 0
 
-        bet = Bet.objects.filter(
-            poll=obj,
-            user=request.user
-        ).select_related("option").first()
+        market = obj.poll.market
 
-        if not bet:
-            return None
+        position = MarketPosition.objects.filter(
+            user=request.user,
+            market=market
+        ).first()
 
-        return {
-            "option_id": bet.option.id,
-            "option_text": bet.option.text,
-            "amount": bet.amount,
-        }
+        if not position:
+            return 0
 
-    def get_can_accept_bets(self, obj):
-        return obj.can_accept_bets()
+        return (
+            position.yes_shares
+            if obj.text.lower() == "yes"
+            else position.no_shares
+        )
 
 class PollResolveSerializer(serializers.Serializer):
     winning_option_id = serializers.IntegerField()
@@ -239,3 +370,9 @@ class NotificationSerializer(serializers.ModelSerializer):
             "is_read",
             "created_at",
         ]
+
+class SellSharesSerializer(serializers.Serializer):
+    option_id = serializers.IntegerField()
+    shares = serializers.FloatField(min_value=0.0001)
+
+

@@ -1,15 +1,18 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.views import APIView
+
+from wallet.services import apply_wallet_transaction
 
 from .mentions import get_mentioned_users
 from wallet.models import WalletTransaction
 from .permissions import IsCreatorOrAdmin
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from django.db.models import Sum
-from .models import CommentLike, Notification, Poll, Bet, PollComment
-from .serializers import CommentSerializer, PollCreateSerializer, PollDetailSerializer, PollListSerializer, BetCreateSerializer, PollResolveSerializer
+from .models import CommentLike, Notification, Poll, Bet, PollComment, Market, PollOption, MarketPosition
+from .serializers import CommentSerializer, PollCreateSerializer, PollDetailSerializer, PollListSerializer, BetCreateSerializer, PollResolveSerializer, SellSharesSerializer
 from django.db import transaction
 
 
@@ -70,36 +73,6 @@ class PollListView(generics.ListAPIView):
 
         return queryset.order_by("-created_at")
 
-class PlaceBetView(generics.CreateAPIView):
-    serializer_class = BetCreateSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(
-            data=request.data,
-            context={"request": request}
-        )
-        serializer.is_valid(raise_exception=True)
-
-        bet = serializer.save(user=request.user)
-
-        poll = bet.poll
-        profile = request.user.profile
-
-        # 💸 Deduct balance (paid polls only)
-        if not poll.is_free:
-            profile.balance -= bet.amount
-            profile.save()
-
-        return Response(
-            {
-                "message": "Bet placed successfully",
-                "remaining_balance": profile.balance,
-            },
-            status=status.HTTP_201_CREATED,
-        )
-
 class PollDetailView(generics.RetrieveAPIView):
     serializer_class = PollDetailSerializer
     permission_classes = [permissions.AllowAny]
@@ -117,9 +90,13 @@ class PollDetailView(generics.RetrieveAPIView):
     def get_object(self):
         poll = super().get_object()
 
-        # 🔥 CRITICAL
-        poll.close_if_expired()
+        # 🔥 Ensure market exists
+        Market.objects.get_or_create(
+            poll=poll,
+            defaults={"liquidity_b": 100.0}
+        )
 
+        poll.close_if_expired()
         return poll
 
     
@@ -158,10 +135,17 @@ class PollResolveView(APIView):
             return Response({"message": "No winners."})
 
         for bet in winning_bets.select_related("user__profile"):
-            payout = int((bet.amount / winning_pool) * total_pool)
-            profile = bet.user.profile
-            profile.balance += payout
-            profile.save()
+            payout = int(bet.shares * 1.0)  # 1 per share
+
+            apply_wallet_transaction(
+                user=bet.user,
+                amount=payout,
+                transaction_type="win",
+                poll=poll,
+                bet=bet,
+                description="Market resolution payout"
+            )
+
 
         return Response({"message": "Poll resolved successfully"})
 
@@ -311,3 +295,170 @@ class CommentLikeToggle(APIView):
 
         return Response({"liked": True})
 
+class PlaceBetView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        poll = Poll.objects.get(id=request.data["poll"])
+        option = PollOption.objects.get(id=request.data["option"])
+        amount = float(request.data["amount"])
+
+        market = Market.objects.select_for_update().get(poll=poll)
+        position, _ = MarketPosition.objects.get_or_create(
+            user=request.user, market=market
+        )
+
+        is_yes = option.is_yes()
+
+        # 💸 Debit wallet
+        apply_wallet_transaction(
+            user=request.user,
+            amount=-int(amount),
+            transaction_type="bet",
+            poll=poll,
+            description="Market buy"
+        )
+
+        shares, price = market.buy(is_yes, amount)
+
+        if is_yes:
+            position.yes_shares += shares
+            position.yes_spent += amount
+        else:
+            position.no_shares += shares
+            position.no_spent += amount
+
+        position.save()
+
+
+        return Response({
+            "shares": round(shares, 4),
+            "price": round(price, 4),
+            "new_price": market.price_yes() if is_yes else market.price_no(),
+        })
+
+class SellSharesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, poll_id):
+        option = PollOption.objects.get(id=request.data["option_id"])
+        shares = float(request.data["shares"])
+
+        market = Market.objects.select_for_update().get(poll_id=poll_id)
+        position = MarketPosition.objects.select_for_update().get(
+            user=request.user, market=market
+        )
+
+        is_yes = option.is_yes()
+
+        owned = position.yes_shares if is_yes else position.no_shares
+
+        owned = round(owned, 4)
+        shares = round(shares, 4)
+
+        if shares <= 0 or shares > owned:
+
+            return Response(
+                {"detail": f"Not enough shares. You own {owned}"},
+                status=400
+            )
+
+        payout = market.sell(is_yes, shares)
+
+        # 💸 CREDIT WALLET
+        apply_wallet_transaction(
+            user=request.user,
+            amount=payout,
+            transaction_type="refund",
+            poll=market.poll,
+            description="Market sell"
+        )
+
+        # 📉 Reduce shares AND cost basis
+        if is_yes:
+            avg_price = position.avg_yes_price()
+            position.yes_shares -= shares
+            position.yes_spent -= shares * avg_price
+        else:
+            avg_price = position.avg_no_price()
+            position.no_shares -= shares
+            position.no_spent -= shares * avg_price
+
+        position.save()
+
+        return Response({
+            "payout": round(payout, 4),
+            "new_price": round(
+                market.price_yes() if is_yes else market.price_no(), 4
+            ),
+        })
+
+from rest_framework.decorators import api_view, permission_classes
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_positions(request):
+    user = request.user
+
+    bets = (
+        Bet.objects
+        .filter(user=user)
+        .values(
+            "poll__id",
+            "poll__title",
+            "option__id",
+            "option__text",
+        )
+        .annotate(
+            shares=Sum("shares"),
+            total_cost=Sum("amount"),
+        )
+        .filter(shares__gt=0)
+    )
+
+    data = []
+
+    for b in bets:
+        avg_price = b["total_cost"] / b["shares"]
+
+        # pull live price from market
+        option = PollOption.objects.get(id=b["option__id"])
+        current_price = option.market_price()
+
+        market_value = b["shares"] * current_price
+        pnl = market_value - b["shares"] * avg_price
+
+        data.append({
+            "poll_id": b["poll__id"],
+            "poll_title": b["poll__title"],
+            "option": b["option__text"],
+            "shares": round(b["shares"], 4),
+            "avg_price": round(avg_price, 4),
+            "current_price": round(current_price, 4),
+            "value": round(market_value, 2),
+            "pnl": round(pnl, 2),
+        })
+
+    return Response(data)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def profile_view(request):
+    user = request.user
+
+    open_positions = (
+        Bet.objects
+        .filter(user=user)
+        .values("option")
+        .annotate(total_shares=Sum("shares"))
+        .filter(total_shares__gt=0)
+        .count()
+    )
+
+    return Response({
+        "username": user.username,
+        "email": user.email,
+        "balance": user.wallet.balance,
+        "open_positions": open_positions,  # ✅ THIS IS THE KEY
+    })

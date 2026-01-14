@@ -7,8 +7,10 @@ const Comment = ({ comment, pollId, refresh }) => {
   const [showReply, setShowReply] = useState(false);
 
   const handleReply = async () => {
+    if (!reply.trim()) return; // optional safety check
+
     await addComment(pollId, {
-      content: replyText,
+      content: reply,     // ✅ correct variable
       parent: comment.id,
     });
 

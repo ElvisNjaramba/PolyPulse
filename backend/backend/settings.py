@@ -55,12 +55,23 @@ CORS_ALLOWED_ORIGINS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        "rest_framework_simplejwt.authentication.JWTAuthentication",  
+        "authentication.auth.SingleSessionJWTAuthentication",         
+        "authentication.auth.VerifiedJWTAuthentication",              
     ],
+
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
-    ]
+    ],
+
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        "anon": "5/hour",
+    },
 }
+
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),

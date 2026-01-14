@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "../api/axios";
+import { getDeviceFingerprint } from "../utils/deviceFingerprint";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -20,13 +21,21 @@ const Register = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+    const fingerprint = getDeviceFingerprint();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
 
     try {
-      await axios.post("auth/register/", formData);
+      await axios.post("auth/register/", {
+  ...formData,
+}, {
+  headers: {
+    "X-Device-Fingerprint": fingerprint,
+  },
+});
 
       setSuccess("Account created successfully. Redirecting to login...");
 

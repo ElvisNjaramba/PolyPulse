@@ -1,3 +1,4 @@
+import math
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -20,94 +21,62 @@ class Poll(models.Model):
         ("suspended", "Suspended"),
     )
 
-    creator = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="polls"
-    )
-
-    category = models.ForeignKey(
-        "PollCategory",
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="polls"
-    )
-
+    creator = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    category = models.ForeignKey(PollCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="polls")
+
 
     is_free = models.BooleanField(default=False)
     min_bet = models.IntegerField(default=10)
+    winning_option = models.ForeignKey("PollOption", null=True, blank=True, on_delete=models.SET_NULL, related_name="won_polls")
 
     closes_at = models.DateTimeField()
-    status = models.CharField(
-        max_length=10,
-        choices=STATUS_CHOICES,
-        default="open"
-    )
-
-    winning_option = models.ForeignKey(
-        "PollOption",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="won_polls"
-    )
-
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="open")
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # ✅ Correct close logic
+    def can_accept_bets(self):
+        return self.status == "open" and timezone.now() < self.closes_at
+    
+    
     def close_if_expired(self):
         if self.status == "open" and timezone.now() >= self.closes_at:
             self.status = "closed"
             self.save(update_fields=["status"])
 
-    def can_accept_bets(self):
-        return self.status == "open" and timezone.now() < self.closes_at
-
-    def __str__(self):
-        return self.title
 
 class PollOption(models.Model):
-    poll = models.ForeignKey(
-        Poll,
-        on_delete=models.CASCADE,
-        related_name="options"
-    )
-
+    poll = models.ForeignKey(Poll, related_name="options", on_delete=models.CASCADE)
     text = models.CharField(max_length=255)
 
-    def __str__(self):
-        return f"{self.poll.title} - {self.text}"
+    def is_yes(self):
+        first = self.poll.options.order_by("id").first()
+        return self.id == first.id
+
+
+# class Bet(models.Model):
+#     user = models.ForeignKey(User, on_delete=models.CASCADE)
+#     poll = models.ForeignKey(Poll, on_delete=models.CASCADE)
+#     option = models.ForeignKey(PollOption, on_delete=models.CASCADE)
+
+#     amount = models.IntegerField()  # money spent
+#     shares = models.FloatField(default=0.0)  # 🔥 NEW
+
+#     created_at = models.DateTimeField(auto_now_add=True)
 
 class Bet(models.Model):
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="bets"
-    )
-
-    poll = models.ForeignKey(
-        Poll,
-        on_delete=models.CASCADE,
-        related_name="bets"
-    )
-
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name="bets")
     option = models.ForeignKey(
         PollOption,
         on_delete=models.CASCADE,
-        related_name="bets"
+        related_name="bets"   # ✅ ADD THIS
     )
 
-    amount = models.PositiveIntegerField()
-
+    amount = models.IntegerField()
+    shares = models.FloatField(default=0.0)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        unique_together = ("user", "poll")  # one bet per poll (v1)
-
-    def __str__(self):
-        return f"{self.user} bet {self.amount} on {self.option}"
 
 class PollComment(models.Model):
     poll = models.ForeignKey(
@@ -191,3 +160,100 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.notification_type}"
+
+
+
+class Position(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    poll = models.ForeignKey(Poll, on_delete=models.CASCADE)
+    option = models.ForeignKey(PollOption, on_delete=models.CASCADE)
+
+    shares = models.FloatField(default=0)
+
+    class Meta:
+        unique_together = ("user", "poll", "option")
+
+
+
+
+
+
+
+class Market(models.Model):
+    poll = models.OneToOneField(Poll, related_name="market", on_delete=models.CASCADE)
+
+    yes_shares = models.FloatField(default=0)
+    no_shares = models.FloatField(default=0)
+    liquidity_b = models.FloatField(default=100.0)
+
+    def _cost(self, yes, no):
+        b = self.liquidity_b
+        return b * math.log(
+            math.exp(yes / b) + math.exp(no / b)
+        )
+
+    def price_yes(self):
+        b = self.liquidity_b
+        return math.exp(self.yes_shares / b) / (
+            math.exp(self.yes_shares / b) +
+            math.exp(self.no_shares / b)
+        )
+
+    def price_no(self):
+        return 1 - self.price_yes()
+
+    def buy(self, is_yes, amount):
+        """
+        Buy shares by paying `amount`
+        """
+        old_cost = self._cost(self.yes_shares, self.no_shares)
+
+        if is_yes:
+            self.yes_shares += amount
+        else:
+            self.no_shares += amount
+
+        new_cost = self._cost(self.yes_shares, self.no_shares)
+
+        shares_bought = new_cost - old_cost
+        self.save()
+
+        return shares_bought, self.price_yes() if is_yes else self.price_no()
+
+    def sell(self, is_yes, shares):
+        """
+        Sell shares and receive payout
+        """
+        old_cost = self._cost(self.yes_shares, self.no_shares)
+
+        if is_yes:
+            self.yes_shares = max(0, self.yes_shares - shares)
+        else:
+            self.no_shares = max(0, self.no_shares - shares)
+
+        new_cost = self._cost(self.yes_shares, self.no_shares)
+
+        payout = old_cost - new_cost
+        self.save()
+
+        return payout
+
+class MarketPosition(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    market = models.ForeignKey(Market, on_delete=models.CASCADE)
+
+    yes_shares = models.FloatField(default=0)
+    no_shares = models.FloatField(default=0)
+
+    
+    yes_spent = models.FloatField(default=0)  
+    no_spent = models.FloatField(default=0)
+
+    class Meta:
+        unique_together = ("user", "market")
+
+    def avg_yes_price(self):
+        return self.yes_spent / self.yes_shares if self.yes_shares else 0
+
+    def avg_no_price(self):
+        return self.no_spent / self.no_shares if self.no_shares else 0
