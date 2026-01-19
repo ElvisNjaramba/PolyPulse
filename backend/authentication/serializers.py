@@ -156,3 +156,23 @@ class EmailVerifiedTokenSerializer(TokenObtainPairSerializer):
         # Return tokens
         tokens = get_tokens_for_user(user, session)
         return tokens
+    
+
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+
+
+class SessionAwareTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        refresh = RefreshToken(attrs["refresh"])
+        session_id = refresh.get("session_id")
+
+        if not UserSession.objects.filter(
+            session_id=session_id,
+            is_active=True
+        ).exists():
+            raise AuthenticationFailed("Session expired")
+
+        data = {}
+        data["access"] = str(refresh.access_token)
+        return data

@@ -7,6 +7,7 @@ from django.conf.urls.static import static
 
 from rest_framework_simplejwt.views import TokenRefreshView 
 from authentication.views import LoginView
+from authentication.serializers import SessionAwareTokenRefreshSerializer
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -16,7 +17,14 @@ urlpatterns = [
     path("api/wallet/", include("wallet.urls")),
 
     path("api/auth/login/", LoginView.as_view(), name="token_obtain_pair"),
-    path("api/auth/refresh/", TokenRefreshView.as_view()),
+    path(
+    "api/auth/refresh/",
+    TokenRefreshView.as_view(
+        serializer_class=SessionAwareTokenRefreshSerializer
+    ),
+    name="token_refresh",
+),
+
 ]
 
 if settings.DEBUG:

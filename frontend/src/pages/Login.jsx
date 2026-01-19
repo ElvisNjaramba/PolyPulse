@@ -25,9 +25,14 @@ const Login = () => {
       localStorage.setItem("refresh", response.data.refresh);
 
       navigate("/");
-    } catch {
-      setError("Invalid username or password");
-    }
+    }catch (err) {
+  const msg =
+    err.response?.data?.detail ||
+    err.response?.data?.non_field_errors?.[0] ||
+    "Login failed";
+
+  setError(msg);
+}
   };
 
 

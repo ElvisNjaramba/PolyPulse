@@ -69,8 +69,8 @@ CORS_ALLOW_HEADERS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         "rest_framework_simplejwt.authentication.JWTAuthentication",  
-        "authentication.auth.SingleSessionJWTAuthentication",         
-        "authentication.auth.VerifiedJWTAuthentication",              
+        # "authentication.auth.SingleSessionJWTAuthentication",         
+        # "authentication.auth.VerifiedJWTAuthentication",              
     ],
 
     'DEFAULT_PERMISSION_CLASSES': [
