@@ -12,7 +12,7 @@ from .permissions import IsCreatorOrAdmin
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from django.db.models import Sum
 from .models import CommentLike, Notification, Poll, Bet, PollComment, Market, PollOption, MarketPosition
-from .serializers import CommentSerializer, PollCreateSerializer, PollDetailSerializer, PollListSerializer, BetCreateSerializer, PollResolveSerializer, SellSharesSerializer
+from .serializers import CommentSerializer, MarketPriceSnapshotSerializer, PollCreateSerializer, PollDetailSerializer, PollListSerializer, BetCreateSerializer, PollResolveSerializer, SellSharesSerializer
 from django.db import transaction
 
 
@@ -462,3 +462,14 @@ def profile_view(request):
         "balance": user.wallet.balance,
         "open_positions": open_positions,  # ✅ THIS IS THE KEY
     })
+
+
+class MarketPriceHistoryView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, poll_id):
+        market = Market.objects.get(poll_id=poll_id)
+        qs = market.price_history.all()
+
+        serializer = MarketPriceSnapshotSerializer(qs, many=True)
+        return Response(serializer.data)

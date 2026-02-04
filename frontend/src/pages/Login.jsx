@@ -1,68 +1,193 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "../api/axios";
+import Logo from "../assets/polypulse.png"
 
 const Login = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    username: "",
-    password: "",
-  });
+  const [formData, setFormData] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    setError("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setIsLoading(true);
 
     try {
       const response = await axios.post("auth/login/", formData);
-
       localStorage.setItem("access", response.data.access);
       localStorage.setItem("refresh", response.data.refresh);
 
-      navigate("/");
-    }catch (err) {
-  const msg =
-    err.response?.data?.detail ||
-    err.response?.data?.non_field_errors?.[0] ||
-    "Login failed";
-
-  setError(msg);
-}
+      setTimeout(() => navigate("/"), 500);
+    } catch (err) {
+      const msg =
+        err.response?.data?.detail ||
+        err.response?.data?.non_field_errors?.[0] ||
+        "Login failed. Please check your credentials.";
+      setError(msg);
+      setIsLoading(false);
+    }
   };
 
-
   return (
-    <div className="auth-container">
-      <h2>Login</h2>
+    <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#0b0f19] to-[#1a1f2e] px-5">
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {/* Background */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-1/4 -right-1/4 w-[500px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(0,224,255,0.1)_0%,transparent_70%)] animate-float" />
+        <div className="absolute -bottom-1/4 -left-1/4 w-[500px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(0,119,255,0.1)_0%,transparent_70%)] animate-float-reverse" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:50px_50px] opacity-50" />
+      </div>
 
-      <form onSubmit={handleSubmit}>
+{/* Card */}
+<div className="relative z-10 w-full max-w-[800px] rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)] animate-fade-in flex flex-col lg:flex-row gap-10">
+
+  {/* Left Side: Form */}
+  <div className="flex-1">
+    {/* Header */}
+    <div className="text-center mb-8">
+      <Link to="/" className="inline-block mb-5">
+        <div className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl border border-white/10 bg-white/5">
+          <span className="text-2xl">🎯</span>
+          <span className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            PolyPulse
+          </span>
+        </div>
+      </Link>
+
+      <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+        Welcome Back
+      </h1>
+      <p className="text-sm text-gray-400 mt-2">
+        Sign in to access your predictions & trades
+      </p>
+    </div>
+
+    {/* Error */}
+    {error && (
+      <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400 animate-slide-down">
+        <span className="text-lg">⚠️</span>
+        {error}
+      </div>
+    )}
+
+    {/* Form */}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      {/* Username */}
+      <div className="flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-sm text-gray-400">
+          <span>👤</span> Username 
+        </label>
         <input
           type="text"
           name="username"
-          placeholder="Username"
+          placeholder="Enter your username"
           value={formData.username}
           onChange={handleChange}
+          disabled={isLoading}
           required
+          className="rounded-xl border border-white/10 bg-white/5 px-4 py-4 text-white placeholder-gray-500 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
         />
+      </div>
 
+      {/* Password */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-2 text-sm text-gray-400">
+            <span>🔒</span> Password
+          </label>
+          <Link to="/forgot-password" className="text-xs text-cyan-400 hover:opacity-80">
+            Forgot password?
+          </Link>
+        </div>
         <input
           type="password"
           name="password"
-          placeholder="Password"
+          placeholder="Enter your password"
           value={formData.password}
           onChange={handleChange}
+          disabled={isLoading}
           required
+          className="rounded-xl border border-white/10 bg-white/5 px-4 py-4 text-white placeholder-gray-500 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
         />
+      </div>
 
-        <button type="submit">Login</button>
-      </form>
+      {/* Submit */}
+      <button
+        type="submit"
+        disabled={isLoading}
+        className="mt-2 flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-4 text-base font-semibold text-[#0b0f19] transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-400/30 disabled:opacity-70 disabled:hover:translate-y-0"
+      >
+        {isLoading ? (
+          <>
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#0b0f19]/30 border-t-[#0b0f19]" />
+            Signing in…
+          </>
+        ) : (
+          <>
+            <span className="text-lg">⚡</span> Sign In
+          </>
+        )}
+      </button>
+    </form>
+  </div>
+
+{/* Right Side: Visual + Stats */}
+<div className="hidden lg:flex flex-1 flex-col gap-6">
+
+  {/* Image / Illustration */}
+  <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-500/10 to-blue-500/10 p-4 shadow-xl animate-float">
+    <img
+      src={Logo} 
+      alt="Trading analytics"
+      className="h-56 w-full object-cover rounded-xl opacity-90 transform transition-transform duration-1000 hover:scale-105"
+    />
+
+    {/* Glow */}
+    <div className="absolute inset-0 rounded-2xl ring-1 ring-cyan-400/20 animate-pulse" />
+  </div>
+
+  {/* Stats */}
+  <div className="grid grid-cols-2 gap-4">
+    <div className="flex flex-col items-center justify-center rounded-2xl bg-white/5 backdrop-blur-md py-6 shadow-lg shadow-cyan-400/20 animate-fade-in-up">
+      <div className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+        1,245
+      </div>
+      <div className="text-xs text-gray-400 mt-1 tracking-wide">
+        Active Traders
+      </div>
+    </div>
+
+    <div className="flex flex-col items-center justify-center rounded-2xl bg-white/5 backdrop-blur-md py-6 shadow-lg shadow-blue-400/20 animate-fade-in-up delay-200">
+      <div className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+        87%
+      </div>
+      <div className="text-xs text-gray-400 mt-1 tracking-wide">
+        Win Rate
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+
+</div>
+
+
+      {/* Footer */}
+      <p className="mt-8 max-w-sm text-center text-xs text-gray-500">
+        By signing in, you agree to our{" "}
+        <Link to="/terms" className="text-cyan-400 hover:underline">Terms</Link>{" "}
+        and{" "}
+        <Link to="/privacy" className="text-cyan-400 hover:underline">Privacy Policy</Link>
+      </p>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from wallet.models import WalletTransaction
-from .models import MarketPosition, Notification, Poll, PollComment, PollOption, Bet
+from .models import MarketPosition, MarketPriceSnapshot, Notification, Poll, PollComment, PollOption, Bet
 from django.db.models import Sum
 from .models import Market
 
@@ -376,3 +376,7 @@ class SellSharesSerializer(serializers.Serializer):
     shares = serializers.FloatField(min_value=0.0001)
 
 
+class MarketPriceSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MarketPriceSnapshot
+        fields = ["yes_price", "no_price", "created_at"]

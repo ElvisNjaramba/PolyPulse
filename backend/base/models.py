@@ -203,9 +203,6 @@ class Market(models.Model):
         return 1 - self.price_yes()
 
     def buy(self, is_yes, amount):
-        """
-        Buy shares by paying `amount`
-        """
         old_cost = self._cost(self.yes_shares, self.no_shares)
 
         if is_yes:
@@ -214,29 +211,58 @@ class Market(models.Model):
             self.no_shares += amount
 
         new_cost = self._cost(self.yes_shares, self.no_shares)
+        cost_paid = new_cost - old_cost
 
-        shares_bought = new_cost - old_cost
         self.save()
 
-        return shares_bought, self.price_yes() if is_yes else self.price_no()
+        MarketPriceSnapshot.objects.create(
+            market=self,
+            yes_price=self.price_yes(),
+            no_price=self.price_no(),
+        )
 
-    def sell(self, is_yes, shares):
+        return cost_paid, self.price_yes() if is_yes else self.price_no()
+
+
+    def sell(self, is_yes: bool, amount: float):
         """
-        Sell shares and receive payout
+        Sell YES or NO shares
         """
+
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+
+        if is_yes and self.yes_shares < amount:
+            raise ValueError("Not enough YES shares in market")
+
+        if not is_yes and self.no_shares < amount:
+            raise ValueError("Not enough NO shares in market")
+
         old_cost = self._cost(self.yes_shares, self.no_shares)
 
         if is_yes:
-            self.yes_shares = max(0, self.yes_shares - shares)
+            self.yes_shares -= amount
         else:
-            self.no_shares = max(0, self.no_shares - shares)
+            self.no_shares -= amount
 
         new_cost = self._cost(self.yes_shares, self.no_shares)
 
-        payout = old_cost - new_cost
+        refund = old_cost - new_cost
+
         self.save()
 
-        return payout
+        # 📊 snapshot AFTER trade
+        MarketPriceSnapshot.objects.create(
+            market=self,
+            yes_price=self.price_yes(),
+            no_price=self.price_no(),
+        )
+
+        return {
+            "refund": refund,
+            "yes_price": self.price_yes(),
+            "no_price": self.price_no(),
+        }
 
 class MarketPosition(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -257,3 +283,19 @@ class MarketPosition(models.Model):
 
     def avg_no_price(self):
         return self.no_spent / self.no_shares if self.no_shares else 0
+    
+class MarketPriceSnapshot(models.Model):
+    market = models.ForeignKey(
+        Market,
+        on_delete=models.CASCADE,
+        related_name="price_history"
+    )
+
+    yes_price = models.FloatField()
+    no_price = models.FloatField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
