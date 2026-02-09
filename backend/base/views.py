@@ -314,13 +314,21 @@ class PlaceBetView(APIView):
         # 💸 Debit wallet
         apply_wallet_transaction(
             user=request.user,
-            amount=-int(amount),
+            amount=-amount,
             transaction_type="bet",
             poll=poll,
             description="Market buy"
         )
 
         shares, price = market.buy(is_yes, amount)
+        bet = Bet.objects.create(
+            user=request.user,
+            poll=poll,
+            option=option,
+            amount=amount,
+            shares=shares
+        )
+
 
         if is_yes:
             position.yes_shares += shares

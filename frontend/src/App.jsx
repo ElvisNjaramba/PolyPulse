@@ -4,7 +4,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import PollDetail from "./pages/PollDetail";
-
+import CreatePoll from "./pages/CreatePoll";
+import ManagePolls from "./pages/ManagePolls";
 import AdminRoute from "./components/AdminRoute";
 import PrivateRoute from "./components/PrivateRoute";
 
@@ -19,7 +20,7 @@ import Notifications from "./pages/Notifications";
 import Profile from "./pages/Profile";
 import VerifyEmail from "./pages/VerifyEmail";
 import CheckEmail from "./pages/CheckEmail";
-
+import PollsList from "./components/PollList";
 import AppLayout from "./components/AppLayout";
 import { AuthProvider } from "./context/AuthContext";
 
@@ -46,6 +47,9 @@ function App() {
             <Route path="/" element={<Dashboard />} />
 
             <Route path="/polls/:id" element={<PollDetail />} />
+            <Route path="/polls" element={<PollsList />} />
+            <Route path="/create/poll" element={<CreatePoll />} />
+            <Route path="/manage/polls" element={<ManagePolls />} />
             <Route
               path="/wallet"
               element={

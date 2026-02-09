@@ -50,8 +50,7 @@ class PollOption(models.Model):
     text = models.CharField(max_length=255)
 
     def is_yes(self):
-        first = self.poll.options.order_by("id").first()
-        return self.id == first.id
+        return self.text.strip().lower() == "yes"
 
 
 # class Bet(models.Model):
@@ -172,11 +171,6 @@ class Position(models.Model):
 
     class Meta:
         unique_together = ("user", "poll", "option")
-
-
-
-
-
 
 
 class Market(models.Model):

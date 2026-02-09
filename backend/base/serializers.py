@@ -110,6 +110,12 @@ class PollDetailSerializer(serializers.ModelSerializer):
     can_accept_bets = serializers.SerializerMethodField()
     total_pool = serializers.SerializerMethodField()
 
+    # 🔥 NEW FIELDS
+    yes_shares = serializers.SerializerMethodField()
+    no_shares = serializers.SerializerMethodField()
+    yes_percentage = serializers.SerializerMethodField()
+    no_percentage = serializers.SerializerMethodField()
+
     class Meta:
         model = Poll
         fields = [
@@ -122,6 +128,10 @@ class PollDetailSerializer(serializers.ModelSerializer):
             "closes_at",
             "can_accept_bets",
             "total_pool",
+            "yes_shares",
+            "no_shares",
+            "yes_percentage",
+            "no_percentage",
             "options",
         ]
 
@@ -136,6 +146,30 @@ class PollDetailSerializer(serializers.ModelSerializer):
             ).aggregate(total=Sum("amount"))["total"]
             or 0
         )
+
+    # 🔥 YES / NO TOTAL SHARES
+    def get_yes_shares(self, obj):
+        market = obj.market
+        return round(market.yes_shares, 4)
+
+    def get_no_shares(self, obj):
+        market = obj.market
+        return round(market.no_shares, 4)
+
+    # 🔥 PERCENTAGES (SAFE)
+    def get_yes_percentage(self, obj):
+        market = obj.market
+        total = market.yes_shares + market.no_shares
+        if total == 0:
+            return 50
+        return round((market.yes_shares / total) * 100, 2)
+
+    def get_no_percentage(self, obj):
+        market = obj.market
+        total = market.yes_shares + market.no_shares
+        if total == 0:
+            return 50
+        return round((market.no_shares / total) * 100, 2)
 
 class PollCreateSerializer(serializers.ModelSerializer):
     options = PollOptionSerializer(many=True)
@@ -240,10 +274,8 @@ class BetCreateSerializer(serializers.ModelSerializer):
             if profile.balance < amount:
                 raise serializers.ValidationError("Insufficient balance.")
 
-        if poll.is_free and amount > 0:
-            raise serializers.ValidationError(
-                "Free polls do not require a bet."
-            )
+            if poll.is_free:
+                amount = 1.0
 
         if Bet.objects.filter(user=user, poll=poll).exists():
             raise serializers.ValidationError(
