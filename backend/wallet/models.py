@@ -4,7 +4,6 @@ from django.utils import timezone
 
 User = settings.AUTH_USER_MODEL
 
-
 class WalletTransaction(models.Model):
     TRANSACTION_TYPES = (
         ("deposit", "Deposit"),
@@ -20,32 +19,12 @@ class WalletTransaction(models.Model):
         related_name="wallet_transactions"
     )
 
-    amount = models.IntegerField()  
-    # Positive = credit, Negative = debit
-
-    transaction_type = models.CharField(
-        max_length=20,
-        choices=TRANSACTION_TYPES
-    )
-
-    related_poll = models.ForeignKey(
-        "base.Poll",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL
-    )
-
-    related_bet = models.ForeignKey(
-        "base.Bet",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL
-    )
-
-    balance_after = models.IntegerField()
-
+    amount = models.FloatField()  # changed from IntegerField
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    related_poll = models.ForeignKey("base.Poll", null=True, blank=True, on_delete=models.SET_NULL)
+    related_bet = models.ForeignKey("base.Bet", null=True, blank=True, on_delete=models.SET_NULL)
+    balance_after = models.FloatField()  # changed from IntegerField
     description = models.CharField(max_length=255, blank=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

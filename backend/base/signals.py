@@ -1,7 +1,7 @@
 # backend/base/signals.py
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import MarketPriceSnapshot
+from .models import MarketPriceSnapshot, Poll, Market
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
@@ -22,3 +22,8 @@ def broadcast_market_snapshot(sender, instance, created, **kwargs):
             },
         },
     )
+
+@receiver(post_save, sender=Poll)
+def create_market_for_poll(sender, instance, created, **kwargs):
+    if created:
+        Market.objects.get_or_create(poll=instance, defaults={"liquidity_b": 100.0})

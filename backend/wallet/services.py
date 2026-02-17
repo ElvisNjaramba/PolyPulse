@@ -1,7 +1,6 @@
 from django.db import transaction
 from .models import WalletTransaction
 
-
 @transaction.atomic
 def apply_wallet_transaction(
     *,
@@ -14,7 +13,15 @@ def apply_wallet_transaction(
 ):
     profile = user.profile
 
-    new_balance = profile.balance + amount
+    # Extract numeric value if amount is a dict
+    if isinstance(amount, dict):
+        amount = float(amount.get("value", 0))
+
+    # Validate amount is numeric
+    if not isinstance(amount, (int, float)):
+        raise TypeError(f"Expected 'amount' to be int or float, got {type(amount)}")
+
+    new_balance = profile.balance + float(amount)
 
     if new_balance < 0:
         raise ValueError("Insufficient balance")
@@ -24,7 +31,7 @@ def apply_wallet_transaction(
 
     WalletTransaction.objects.create(
         user=user,
-        amount=amount,
+        amount=float(amount),
         transaction_type=transaction_type,
         related_poll=poll,
         related_bet=bet,

@@ -52,17 +52,6 @@ class PollOption(models.Model):
     def is_yes(self):
         return self.text.strip().lower() == "yes"
 
-
-# class Bet(models.Model):
-#     user = models.ForeignKey(User, on_delete=models.CASCADE)
-#     poll = models.ForeignKey(Poll, on_delete=models.CASCADE)
-#     option = models.ForeignKey(PollOption, on_delete=models.CASCADE)
-
-#     amount = models.IntegerField()  # money spent
-#     shares = models.FloatField(default=0.0)  # 🔥 NEW
-
-#     created_at = models.DateTimeField(auto_now_add=True)
-
 class Bet(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     poll = models.ForeignKey(Poll, on_delete=models.CASCADE, related_name="bets")

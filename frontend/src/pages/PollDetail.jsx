@@ -20,8 +20,6 @@ const PollDetail = () => {
   const [success, setSuccess] = useState("");
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
-  const [chartData, setChartData] = useState([]);
-  const wsRef = useRef(null);
   const commentsEndRef = useRef(null);
 
   const fetchPoll = async () => {
@@ -91,32 +89,11 @@ const PollDetail = () => {
     }
   };
 
-  useEffect(() => {
-    fetchPoll();
-    loadComments();
+useEffect(() => {
+  fetchPoll();
+  loadComments();
+}, [id]);
 
-    const ws = new WebSocket(`ws://localhost:8000/ws/polls/${id}/`);
-    wsRef.current = ws;
-
-    ws.onopen = () => console.log("WebSocket connected for poll:", id);
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setChartData(prev => {
-          const newData = [...prev, data];
-          if (newData.length > MAX_CHART_POINTS) newData.shift();
-          return newData;
-        });
-        if (data.poll_update) setPoll(prev => ({ ...prev, ...data.poll_update }));
-      } catch (err) {
-        console.error("WebSocket parse error:", err);
-      }
-    };
-    ws.onclose = () => console.log("WebSocket closed");
-    ws.onerror = (err) => console.error("WebSocket error:", err);
-
-    return () => ws.close();
-  }, [id]);
 
   if (!poll) {
     return (
@@ -126,6 +103,7 @@ const PollDetail = () => {
       </div>
     );
   }
+
 
   const isClosed = !poll.can_accept_bets;
   const isFreePoll = poll.is_free;
@@ -181,7 +159,8 @@ const PollDetail = () => {
           </div>
           <div className="h-80 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
             <ErrorBoundary>
-              <MarketChart data={chartData} />
+              <MarketChart pollId={id} />
+
             </ErrorBoundary>
           </div>
         </div>

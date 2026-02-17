@@ -17,7 +17,7 @@ class Profile(models.Model):
 )
 
 
-    balance = models.IntegerField(default=1000)
+    balance = models.FloatField(default=1000)
 
     polls_created_today = models.IntegerField(default=0)
     last_poll_created_date = models.DateField(null=True, blank=True)

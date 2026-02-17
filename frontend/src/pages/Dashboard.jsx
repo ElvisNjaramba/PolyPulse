@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchPolls } from "../api/polls";
+import axios from "axios";
 
 const Dashboard = () => {
   const [polls, setPolls] = useState([]);
@@ -12,7 +13,7 @@ const Dashboard = () => {
     totalMarkets: 0,
     activeMarkets: 0,
     totalVolume: 0,
-    avgOdds: 0,
+    new_polls_today: 0,
   });
   const navigate = useNavigate();
 
@@ -25,30 +26,35 @@ const Dashboard = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  // useEffect(() => {
+  //   axios.get("http://127.0.0.1:8000/api/poll-stats/")
+  //     .then(res => {
+  //       setStats(res.data);
+  //     });
+  // }, []);
+
   const calculateStats = (pollsData) => {
     const totalMarkets = pollsData.length;
-    const activeMarkets = pollsData.filter(p => p.can_accept_bets).length;
+
+    // 🔹 Active users: unique users who placed a bet
+    const allUserIds = pollsData.flatMap(poll => poll.all_user_ids || []);
+    const uniqueUserCount = new Set(allUserIds).size;
+
+    // 🔹 Total volume: sum of total_pool of all polls
     const totalVolume = pollsData.reduce(
       (sum, p) => sum + Number(p.total_pool || 0),
       0
     );
 
-    const avgOdds =
-      pollsData.length > 0
-        ? pollsData.reduce((sum, p) => {
-          const prices = p.options?.map(o => o.price) || [];
-          if (!prices.length) return sum + 0.5;
-          return sum + prices.reduce((a, b) => a + b, 0) / prices.length;
-        }, 0) / pollsData.length
-        : 0.5;
 
     setStats({
       totalMarkets,
-      activeMarkets,
+      activeMarkets: uniqueUserCount, // ✅ total unique users
       totalVolume,
-      avgOdds: (avgOdds * 100).toFixed(1),
     });
   };
+
+
 
   const formatTimeRemaining = (closesAt) => {
     if (!closesAt) return "Unknown";
@@ -112,6 +118,7 @@ const Dashboard = () => {
     return acc;
   }, {});
 
+
   const filteredPolls = polls.filter(poll => {
     const isClosed = poll.closes_at
       ? new Date(poll.closes_at) <= new Date()
@@ -133,10 +140,6 @@ const Dashboard = () => {
 
     return true;
   });
-
-  const trendingPolls = [...polls]
-    .sort((a, b) => Number(b.total_pool || 0) - Number(a.total_pool || 0))
-    .slice(0, 3);
 
   const selectedCategory = categories.find(c => c.id === category);
 
@@ -217,29 +220,32 @@ const Dashboard = () => {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
               <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
-                📊 Active Markets
+                Poly Pulse Markets
               </h1>
               <p className="text-gray-400 mt-2">Trade predictions on live events and outcomes</p>
             </div>
 
             {/* Quick Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
               <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
                 <div className="text-sm text-gray-400 mb-1">Total Markets</div>
                 <div className="text-2xl font-bold text-white">{stats.totalMarkets}</div>
               </div>
               <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
-                <div className="text-sm text-gray-400 mb-1">Active</div>
+                <div className="text-sm text-gray-400 mb-1">Active Traders</div>
                 <div className="text-2xl font-bold text-green-400">{stats.activeMarkets}</div>
               </div>
               <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
-                <div className="text-sm text-gray-400 mb-1">Total Volume</div>
+                <div className="text-sm text-gray-400 mb-1">Gross Volume</div>
                 <div className="text-2xl font-bold text-cyan-400">${stats.totalVolume.toFixed(0)}</div>
+              </div>              {/* <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
+                <div className="text-sm text-gray-400 mb-1">New Polls</div>
+                <div className="text-2xl font-bold text-purple-400">
+                  {stats.new_polls_today}
+                </div>
+
               </div>
-              <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
-                <div className="text-sm text-gray-400 mb-1">Avg Odds</div>
-                <div className="text-2xl font-bold text-purple-400">{stats.avgOdds}%</div>
-              </div>
+ */}
             </div>
           </div>
 
@@ -263,8 +269,8 @@ const Dashboard = () => {
                       key={cat.id}
                       onClick={() => setCategory(cat.id)}
                       className={`flex-shrink-0 group relative overflow-hidden rounded-2xl p-4 transition-all duration-300 min-w-[140px] ${category === cat.id
-                          ? "ring-2 ring-offset-2 ring-offset-gray-900 ring-cyan-500 shadow-xl scale-105"
-                          : "hover:scale-[1.02]"
+                        ? "ring-2 ring-offset-2 ring-offset-gray-900 ring-cyan-500 shadow-xl scale-105"
+                        : "hover:scale-[1.02]"
                         }`}
                     >
                       <div className={`absolute inset-0 bg-gradient-to-br ${cat.color} ${category === cat.id ? 'opacity-100' : 'opacity-20'
@@ -309,13 +315,13 @@ const Dashboard = () => {
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-2 categories-scrollbar scrollbar-hide hover:scrollbar-default">
-              {["all", "open", "closed", "high-volume"].map((filterType) => (
+              {["all", "open", "closed"].map((filterType) => (
                 <button
                   key={filterType}
                   onClick={() => setFilter(filterType)}
                   className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${filter === filterType
-                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20"
-                      : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
+                    ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20"
+                    : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
                     }`}
                 >
                   {filterType.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")}
@@ -428,8 +434,8 @@ const Dashboard = () => {
                         {/* Status Badge */}
                         <div className="absolute top-3 right-3 z-10">
                           <div className={`px-2 py-1 rounded-lg text-xs font-bold ${isClosed
-                              ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                              : "bg-green-500/20 text-green-400 border border-green-500/30"
+                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                            : "bg-green-500/20 text-green-400 border border-green-500/30"
                             }`}>
                             {isClosed ? "CLOSED" : "OPEN"}
                           </div>
@@ -467,10 +473,10 @@ const Dashboard = () => {
 
                               {/* Market Trend */}
                               <div className={`p-2 rounded-lg ${marketTrend === "bullish" ? "bg-green-500/10" :
-                                  marketTrend === "bearish" ? "bg-red-500/10" : "bg-gray-800/50"
+                                marketTrend === "bearish" ? "bg-red-500/10" : "bg-gray-800/50"
                                 }`}>
                                 <div className={`text-xs font-medium ${marketTrend === "bullish" ? "text-green-400" :
-                                    marketTrend === "bearish" ? "text-red-400" : "text-gray-400"
+                                  marketTrend === "bearish" ? "text-red-400" : "text-gray-400"
                                   }`}>
                                   {marketTrend === "bullish" ? "📈" :
                                     marketTrend === "bearish" ? "📉" : "➡️"}
@@ -491,7 +497,7 @@ const Dashboard = () => {
 
 
                             {/* Option Prices Preview */}
-                            {poll.options && poll.options.length > 0 && (
+                            {/* {poll.options && poll.options.length > 0 && (
                               <div className="pt-3 border-t border-gray-800/50">
                                 <div className="text-xs text-gray-500 mb-2">Current Prices</div>
                                 <div className="flex gap-2">
@@ -499,8 +505,8 @@ const Dashboard = () => {
                                     <div
                                       key={option.id}
                                       className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium ${idx === 0 ? "bg-green-500/10 text-green-400" :
-                                          idx === 1 ? "bg-red-500/10 text-red-400" :
-                                            "bg-blue-500/10 text-blue-400"
+                                        idx === 1 ? "bg-red-500/10 text-red-400" :
+                                          "bg-blue-500/10 text-blue-400"
                                         }`}
                                     >
                                       <div className="truncate">{option.text}</div>
@@ -514,7 +520,7 @@ const Dashboard = () => {
                                   )}
                                 </div>
                               </div>
-                            )}
+                            )} */}
                           </div>
                         </div>
                       </div>

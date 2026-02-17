@@ -1,4 +1,3 @@
-from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.utils import timezone
@@ -9,7 +8,7 @@ from wallet.services import apply_wallet_transaction
 from .mentions import get_mentioned_users
 from wallet.models import WalletTransaction
 from .permissions import IsCreatorOrAdmin
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
 from django.db.models import Sum
 from .models import CommentLike, Notification, Poll, Bet, PollComment, Market, PollOption, MarketPosition
 from .serializers import CommentSerializer, MarketPriceSnapshotSerializer, PollCreateSerializer, PollDetailSerializer, PollListSerializer, BetCreateSerializer, PollResolveSerializer, SellSharesSerializer
@@ -53,18 +52,20 @@ class PollListView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = Poll.objects.select_related(
-            "creator", "category"
-        ).prefetch_related("options")
+            "creator", "category", "market"
+        ).prefetch_related("options", "options__bets")
 
         category = self.request.query_params.get("category")
-        status = self.request.query_params.get("status")
+        status_filter = self.request.query_params.get("status")
         is_free = self.request.query_params.get("is_free")
 
         if category:
             queryset = queryset.filter(category__slug=category)
 
-        if status == "open":
-            queryset = queryset.filter(closes_at__gt=timezone.now())
+        if status_filter == "open":
+            queryset = queryset.filter(status="open", closes_at__gt=timezone.now())
+        elif status_filter == "closed":
+            queryset = queryset.filter(status__in=["closed", "resolved"])
 
         if is_free == "true":
             queryset = queryset.filter(is_free=True)
@@ -360,14 +361,12 @@ class SellSharesView(APIView):
         )
 
         is_yes = option.is_yes()
-
         owned = position.yes_shares if is_yes else position.no_shares
 
         owned = round(owned, 4)
         shares = round(shares, 4)
 
         if shares <= 0 or shares > owned:
-
             return Response(
                 {"detail": f"Not enough shares. You own {owned}"},
                 status=400
@@ -375,16 +374,19 @@ class SellSharesView(APIView):
 
         payout = market.sell(is_yes, shares)
 
-        # 💸 CREDIT WALLET
+        # Handle payout as dict or number
+        payout_value = float(payout.get("amount", 0)) if isinstance(payout, dict) else float(payout)
+
+        # Credit wallet
         apply_wallet_transaction(
             user=request.user,
-            amount=payout,
+            amount=payout_value,
             transaction_type="refund",
             poll=market.poll,
             description="Market sell"
         )
 
-        # 📉 Reduce shares AND cost basis
+        # Reduce shares AND cost basis
         if is_yes:
             avg_price = position.avg_yes_price()
             position.yes_shares -= shares
@@ -397,7 +399,7 @@ class SellSharesView(APIView):
         position.save()
 
         return Response({
-            "payout": round(payout, 4),
+            "payout": round(payout_value, 4),
             "new_price": round(
                 market.price_yes() if is_yes else market.price_no(), 4
             ),
@@ -481,3 +483,20 @@ class MarketPriceHistoryView(APIView):
 
         serializer = MarketPriceSnapshotSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def poll_stats(request):
+    today = timezone.now().date()
+
+    new_polls_today = Poll.objects.filter(
+        created_at__date=today
+    ).count()
+
+    total_polls = Poll.objects.count()
+
+    return Response({
+        "new_polls_today": new_polls_today,
+        "total_polls": total_polls,
+    })
