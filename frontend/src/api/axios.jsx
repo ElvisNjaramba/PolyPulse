@@ -3,23 +3,23 @@ import axios from "axios";
 const API_BASE_URL = "http://127.0.0.1:8000/api/";
 
 const axiosInstance = axios.create({
-    baseURL: API_BASE_URL,
-    headers: {
-        "Content-Type": "application/json",
-    },
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
 // Attach access token automatically
 axiosInstance.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem("access");
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
+  (config) => {
+    const token = localStorage.getItem("access");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
 
-        return config;
-    },
-    (error) => Promise.reject(error)
+    return config;
+  },
+  (error) => Promise.reject(error)
 );
 
 // Handle token refresh automatically
@@ -55,9 +55,10 @@ axiosInstance.interceptors.response.use(
           `Bearer ${response.data.access}`;
 
         return axiosInstance(originalRequest);
-      } catch {
+      } catch (refreshError) {
         localStorage.clear();
         window.location.href = "/login";
+        return Promise.reject(refreshError);
       }
     }
 

@@ -11,19 +11,29 @@ const Wallet = () => {
   useEffect(() => {
     fetchWalletHistory()
       .then(res => {
-        setTxs(res.data);
-        // Calculate current balance from the latest transaction
-        if (res.data.length > 0) {
-          setCurrentBalance(res.data[0].balance_after);
+        // Ensure transactions are sorted by created_at desc (newest first)
+        const sorted = res.data.sort(
+          (a, b) => new Date(b.created_at) - new Date(a.created_at)
+        );
+        setTxs(sorted);
+        // Current balance is the balance_after of the most recent transaction
+        if (sorted.length > 0) {
+          setCurrentBalance(sorted[0].balance_after);
         }
       })
       .finally(() => setLoading(false));
   }, []);
 
+  // Define which transaction types are credits (profit) vs debits (cost)
   const isProfitTx = (tx) => {
-    return ["win", "refund", "admin_adjustment", "sell", "deposit", "bonus"].includes(
-      tx.transaction_type
-    );
+    const profitTypes = [
+      "win",
+      "refund",
+      "admin_adjustment",
+      "deposit",
+      "bonus",
+    ];
+    return profitTypes.includes(tx.transaction_type);
   };
 
   const getTransactionIcon = (type) => {
@@ -32,7 +42,6 @@ const Wallet = () => {
       deposit: "💰",
       withdrawal: "🏦",
       win: "🏆",
-      sell: "📈",
       refund: "↩️",
       admin_adjustment: "⚙️",
       bonus: "🎁",
@@ -81,6 +90,9 @@ const Wallet = () => {
   const totalCost = txs
     .filter(tx => !isProfitTx(tx))
     .reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0);
+
+  const betTransactions = txs.filter(tx => tx.transaction_type === "bet");
+  const winTransactions = txs.filter(tx => tx.transaction_type === "win");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
@@ -131,8 +143,8 @@ const Wallet = () => {
               </div>
             </div>
             
-            <div className="flex gap-2">
-              {["all", "profit", "cost", "bet", "deposit", "withdrawal"].map((filterType) => (
+            <div className="flex flex-wrap gap-2">
+              {["all", "profit", "cost", "bet", "deposit", "withdrawal", "win", "refund", "bonus"].map((filterType) => (
                 <button
                   key={filterType}
                   onClick={() => setFilter(filterType)}
@@ -163,8 +175,8 @@ const Wallet = () => {
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
               <div className="text-sm text-gray-400 mb-1">Avg Bet Size</div>
               <div className="text-2xl font-bold text-white">
-                ${txs.filter(tx => tx.transaction_type === 'bet').length > 0 
-                  ? (txs.filter(tx => tx.transaction_type === 'bet').reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0) / txs.filter(tx => tx.transaction_type === 'bet').length).toFixed(2)
+                ${betTransactions.length > 0 
+                  ? (betTransactions.reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0) / betTransactions.length).toFixed(2)
                   : '0.00'
                 }
               </div>
@@ -172,8 +184,8 @@ const Wallet = () => {
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
               <div className="text-sm text-gray-400 mb-1">Win Rate</div>
               <div className="text-2xl font-bold text-green-400">
-                {txs.filter(tx => tx.transaction_type === 'win').length > 0
-                  ? `${Math.round((txs.filter(tx => tx.transaction_type === 'win').length / txs.filter(tx => tx.transaction_type === 'bet').length) * 100)}%`
+                {betTransactions.length > 0
+                  ? `${Math.round((winTransactions.length / betTransactions.length) * 100)}%`
                   : '0%'
                 }
               </div>
@@ -246,12 +258,11 @@ const Wallet = () => {
                               </p>
                             )}
                             
-<div className="flex items-center gap-3 text-xs text-gray-500">
-  <span>{formatDate(tx.created_at)}</span>
-  <span>•</span>
-  <span>Transaction #{String(tx.id).slice(0, 8)}</span>
-</div>
-
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              <span>{formatDate(tx.created_at)}</span>
+                              <span>•</span>
+                              <span>Transaction #{String(tx.id).slice(0, 8)}</span>
+                            </div>
                           </div>
                         </div>
 
@@ -310,13 +321,13 @@ const Wallet = () => {
             <div className="p-4 bg-gray-900/30 rounded-xl">
               <div className="text-green-400 font-bold mb-2">Credits (+)</div>
               <div className="text-sm text-gray-400">
-                Wins, deposits, refunds, and sales appear as green credits
+                Wins, deposits, refunds, bonuses appear as green credits
               </div>
             </div>
             <div className="p-4 bg-gray-900/30 rounded-xl">
               <div className="text-red-400 font-bold mb-2">Debits (-)</div>
               <div className="text-sm text-gray-400">
-                Bets, withdrawals, and fees appear as red debits
+                Bets, withdrawals, fees appear as red debits
               </div>
             </div>
             <div className="p-4 bg-gray-900/30 rounded-xl">
