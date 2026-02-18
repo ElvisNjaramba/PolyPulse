@@ -207,6 +207,7 @@ class Market(models.Model):
         return cost_paid, self.price_yes() if is_yes else self.price_no()
 
 
+
     def sell(self, is_yes: bool, amount: float):
         """
         Sell YES or NO shares

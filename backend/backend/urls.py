@@ -17,13 +17,7 @@ urlpatterns = [
     path("api/wallet/", include("wallet.urls")),
 
     path("api/auth/login/", LoginView.as_view(), name="token_obtain_pair"),
-    path(
-    "api/auth/refresh/",
-    TokenRefreshView.as_view(
-        serializer_class=SessionAwareTokenRefreshSerializer
-    ),
-    name="token_refresh",
-),
+    path("api/auth/refresh/",TokenRefreshView.as_view(serializer_class=SessionAwareTokenRefreshSerializer),name="token_refresh",),
 
 ]
 

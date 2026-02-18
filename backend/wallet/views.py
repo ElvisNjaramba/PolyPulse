@@ -12,7 +12,9 @@ class WalletHistoryView(ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return WalletTransaction.objects.filter(user=self.request.user)
+        return WalletTransaction.objects.filter(
+            user=self.request.user
+        ).order_by('-created_at')
 
 class WalletSummaryView(APIView):
     permission_classes = [IsAuthenticated]

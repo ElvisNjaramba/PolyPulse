@@ -347,6 +347,8 @@ class PlaceBetView(APIView):
             "new_price": market.price_yes() if is_yes else market.price_no(),
         })
 
+import logging
+logger = logging.getLogger(__name__)
 class SellSharesView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -363,9 +365,6 @@ class SellSharesView(APIView):
         is_yes = option.is_yes()
         owned = position.yes_shares if is_yes else position.no_shares
 
-        owned = round(owned, 4)
-        shares = round(shares, 4)
-
         if shares <= 0 or shares > owned:
             return Response(
                 {"detail": f"Not enough shares. You own {owned}"},
@@ -374,8 +373,17 @@ class SellSharesView(APIView):
 
         payout = market.sell(is_yes, shares)
 
-        # Handle payout as dict or number
-        payout_value = float(payout.get("amount", 0)) if isinstance(payout, dict) else float(payout)
+        if isinstance(payout, dict):
+            payout_value = float(payout.get("refund", 0))
+        else:
+            payout_value = float(payout)
+
+
+        if payout_value <= 0:
+            return Response(
+                {"detail": "Sell failed — payout is zero."},
+                status=400
+            )
 
         # Credit wallet
         apply_wallet_transaction(
@@ -386,7 +394,7 @@ class SellSharesView(APIView):
             description="Market sell"
         )
 
-        # Reduce shares AND cost basis
+        # Reduce shares
         if is_yes:
             avg_price = position.avg_yes_price()
             position.yes_shares -= shares
@@ -404,6 +412,7 @@ class SellSharesView(APIView):
                 market.price_yes() if is_yes else market.price_no(), 4
             ),
         })
+
 
 from rest_framework.decorators import api_view, permission_classes
 @api_view(["GET"])
