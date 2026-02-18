@@ -1,102 +1,285 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import api from "../api/axios";
 
-const styles = {
-  page: {
-    maxWidth: "900px",
-    margin: "0 auto",
-    padding: "24px",
-    color: "#e5e7eb",
-  },
-
-  title: {
-    fontSize: "24px",
-    fontWeight: 700,
-    marginBottom: "20px",
-  },
-
-  card: {
-    background: "#0b0f19",
-    border: "1px solid #1f2937",
-    borderRadius: "14px",
-    padding: "16px",
-    marginBottom: "14px",
-  },
-
-  poll: {
-    fontSize: "16px",
-    fontWeight: 600,
-    marginBottom: "10px",
-  },
-
-  row: {
-    display: "grid",
-    gridTemplateColumns: "1.5fr 1fr 1fr 1fr 1fr",
-    fontSize: "14px",
-    gap: "10px",
-    marginBottom: "6px",
-  },
-
-  header: {
-    color: "#9ca3af",
-    fontSize: "13px",
-    marginBottom: "8px",
-  },
-
-  pnlPos: { color: "#22c55e", fontWeight: 600 },
-  pnlNeg: { color: "#ef4444", fontWeight: 600 },
-
-  empty: {
-    color: "#9ca3af",
-    textAlign: "center",
-    marginTop: "40px",
-  },
-};
+const ITEMS_PER_PAGE = 10;
 
 const Positions = () => {
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    api.get("positions/")
+    api
+      .get("/positions/")
       .then((res) => setPositions(res.data))
+      .catch((err) => {
+        console.error(err);
+        setError("Failed to load positions");
+      })
       .finally(() => setLoading(false));
   }, []);
 
+  // Filter positions based on selected status
+  const filteredPositions = useMemo(() => {
+    if (filter === "all") return positions;
+    return positions.filter((p) => p.status === filter);
+  }, [positions, filter]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredPositions.length / ITEMS_PER_PAGE);
+  const paginatedPositions = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredPositions.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredPositions, currentPage]);
+
+  // Group paginated positions by status
+  const grouped = useMemo(() => {
+    const groups = {};
+    paginatedPositions.forEach((pos) => {
+      const status = pos.status || "unknown";
+      if (!groups[status]) groups[status] = [];
+      groups[status].push(pos);
+    });
+    return groups;
+  }, [paginatedPositions]);
+
+  // Summary totals (overall, not filtered)
+  const totalInvested = positions.reduce(
+    (sum, p) => sum + (p.avg_price * p.shares),
+    0
+  );
+  const totalValue = positions.reduce(
+    (sum, p) => sum + (p.current_price * p.shares),
+    0
+  );
+  const totalPnL = positions.reduce((sum, p) => sum + p.pnl, 0);
+
+  const statusConfig = {
+    open: { label: "🟢 Open", bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-400" },
+    resolved: { label: "🏁 Resolved", bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-400" },
+    closed: { label: "🔒 Closed", bg: "bg-gray-500/10", border: "border-gray-500/20", text: "text-gray-400" },
+    suspended: { label: "⛔ Suspended", bg: "bg-amber-500/10", border: "border-amber-500/20", text: "text-amber-400" },
+    unknown: { label: "📦 Other", bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-400" },
+  };
+
+  // Reset to first page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 flex items-center justify-center">
+        <div className="text-white flex items-center gap-3">
+          <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" />
+          Loading your positions...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 flex items-center justify-center">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-6 py-4 rounded-2xl">
+          ⚠️ {error}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={styles.page}>
-      <div style={styles.title}>📊 Your Positions</div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
+      {/* Background Effects */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
+      </div>
 
-      {loading && <p>Loading positions…</p>}
+      <div className="max-w-6xl mx-auto relative z-10">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
+            Your Positions
+          </h1>
+          <p className="text-gray-400 mt-2">Track your active and settled prediction markets</p>
+        </div>
 
-      {!loading && positions.length === 0 && (
-        <div style={styles.empty}>No open positions.</div>
-      )}
-
-      {positions.map((p, idx) => (
-        <div key={idx} style={styles.card}>
-          <div style={styles.poll}>{p.poll_title}</div>
-
-          <div style={{ ...styles.row, ...styles.header }}>
-            <div>Option</div>
-            <div>Shares</div>
-            <div>Avg</div>
-            <div>Price</div>
-            <div>P/L</div>
-          </div>
-
-          <div style={styles.row}>
-            <div>{p.option}</div>
-            <div>{p.shares}</div>
-            <div>{p.avg_price}</div>
-            <div>{p.current_price}</div>
-            <div style={p.pnl >= 0 ? styles.pnlPos : styles.pnlNeg}>
-              {p.pnl >= 0 ? "+" : ""}
-              {p.pnl}
+        {/* Summary Cards */}
+        {positions.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5">
+              <p className="text-sm text-gray-400 mb-1">Total Invested</p>
+              <p className="text-2xl font-bold text-white">
+                ${totalInvested.toFixed(2)}
+              </p>
+            </div>
+            <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5">
+              <p className="text-sm text-gray-400 mb-1">Current Value</p>
+              <p className="text-2xl font-bold text-white">
+                ${totalValue.toFixed(2)}
+              </p>
+            </div>
+            <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5">
+              <p className="text-sm text-gray-400 mb-1">Total P&L</p>
+              <p
+                className={`text-2xl font-bold ${
+                  totalPnL >= 0 ? "text-green-400" : "text-red-400"
+                }`}
+              >
+                {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
+              </p>
             </div>
           </div>
+        )}
+
+        {/* Filter Bar */}
+        <div className="mb-6 flex flex-wrap gap-2">
+          {["all", "open", "resolved", "closed", "suspended"].map((status) => (
+            <button
+              key={status}
+              onClick={() => setFilter(status)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all capitalize ${
+                filter === status
+                  ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg"
+                  : "bg-gray-900/50 border border-gray-800/50 text-gray-400 hover:bg-gray-800/50 hover:text-white"
+              }`}
+            >
+              {status === "all" ? "📋 All" : statusConfig[status]?.label || status}
+            </button>
+          ))}
         </div>
-      ))}
+
+        {/* No positions message */}
+        {filteredPositions.length === 0 && (
+          <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-12 text-center">
+            <p className="text-gray-400 text-lg">No positions found</p>
+            <p className="text-gray-500 text-sm mt-2">
+              {filter === "all"
+                ? "Start trading to see your positions here"
+                : `No ${filter} positions to display`}
+            </p>
+          </div>
+        )}
+
+        {/* Positions by status (from current page) */}
+        {Object.entries(grouped).map(([status, items]) => {
+          const config = statusConfig[status] || statusConfig.unknown;
+          return (
+            <div key={status} className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <h2 className="text-xl font-semibold text-white">{config.label}</h2>
+                <span
+                  className={`px-2 py-0.5 text-xs rounded-full ${config.bg} ${config.text} border ${config.border}`}
+                >
+                  {items.length}
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {items.map((pos, idx) => {
+                  const pnl = pos.pnl;
+                  const pnlClass = pnl >= 0 ? "text-green-400" : "text-red-400";
+                  return (
+                    <div
+                      key={idx}
+                      className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5 hover:border-gray-700/50 transition-all"
+                    >
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                        {/* Left side: Poll title and option */}
+                        <div className="flex-1">
+                          <h3 className="text-white font-medium mb-1">{pos.poll_title}</h3>
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`px-2 py-0.5 text-xs rounded-full ${
+                                pos.option.toLowerCase() === "yes"
+                                  ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                                  : "bg-red-500/10 text-red-400 border border-red-500/20"
+                              }`}
+                            >
+                              {pos.option}
+                            </span>
+                            <span className="text-sm text-gray-400">
+                              {pos.shares.toFixed(4)} shares
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Right side: Prices and P&L */}
+                        <div className="grid grid-cols-3 gap-6 md:gap-8">
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Avg Price</p>
+                            <p className="text-white font-mono">${pos.avg_price.toFixed(4)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Current</p>
+                            <p className="text-white font-mono">${pos.current_price.toFixed(4)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">P&L</p>
+                            <p className={`font-mono font-medium ${pnlClass}`}>
+                              {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Progress bar for open positions */}
+                      {status === "open" && (
+                        <div className="mt-4">
+                          <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  (pos.current_price / pos.avg_price) * 100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Pagination Controls */}
+        {filteredPositions.length > ITEMS_PER_PAGE && (
+          <div className="mt-8 flex items-center justify-center gap-4">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-gray-900/50 border border-gray-800/50 rounded-xl text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            >
+              ← Previous
+            </button>
+            <span className="text-gray-300">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-gray-900/50 border border-gray-800/50 rounded-xl text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            >
+              Next →
+            </button>
+          </div>
+        )}
+
+        {/* Note about pagination (optional) */}
+        {filteredPositions.length > 0 && (
+          <p className="text-center text-xs text-gray-600 mt-4">
+            Showing {paginatedPositions.length} of {filteredPositions.length} positions
+          </p>
+        )}
+      </div>
     </div>
   );
 };

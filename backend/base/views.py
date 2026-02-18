@@ -1,18 +1,20 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.views import APIView
 
 from wallet.services import apply_wallet_transaction
-
+from rest_framework.generics import ListAPIView
 from .mentions import get_mentioned_users
 from wallet.models import WalletTransaction
 from .permissions import IsCreatorOrAdmin
 from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
 from django.db.models import Sum
-from .models import CommentLike, Notification, Poll, Bet, PollComment, Market, PollOption, MarketPosition
-from .serializers import CommentSerializer, MarketPriceSnapshotSerializer, PollCreateSerializer, PollDetailSerializer, PollListSerializer, BetCreateSerializer, PollResolveSerializer, SellSharesSerializer
+from .models import CommentLike, Notification, Poll, Bet, PollCategory, PollComment, Market, PollOption, MarketPosition
+from .serializers import CommentSerializer, MarketPriceSnapshotSerializer, PollCategorySerializer, PollCreateSerializer, PollDetailSerializer, PollListSerializer, BetCreateSerializer, PollResolveSerializer, SellSharesSerializer
 from django.db import transaction
+from django.contrib.auth.models import User
 
 
 class PollCreateView(generics.CreateAPIView):
@@ -45,6 +47,7 @@ class PollCreateView(generics.CreateAPIView):
             {"message": "Poll created successfully", "poll_id": poll.id},
             status=status.HTTP_201_CREATED,
         )
+
 
 class PollListView(generics.ListAPIView):
     serializer_class = PollListSerializer
@@ -92,10 +95,10 @@ class PollDetailView(generics.RetrieveAPIView):
         poll = super().get_object()
 
         # 🔥 Ensure market exists
-        Market.objects.get_or_create(
-            poll=poll,
-            defaults={"liquidity_b": 100.0}
-        )
+        # Market.objects.get_or_create(
+        #     poll=poll,
+        #     defaults={"liquidity_b": 100.0}
+        # )
 
         poll.close_if_expired()
         return poll
@@ -301,13 +304,21 @@ class PlaceBetView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        poll = Poll.objects.get(id=request.data["poll"])
-        option = PollOption.objects.get(id=request.data["option"])
-        amount = float(request.data["amount"])
+        serializer = BetCreateSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        poll = serializer.validated_data["poll"]
+        option = serializer.validated_data["option"]
+        amount = serializer.validated_data["amount"]
 
         market = Market.objects.select_for_update().get(poll=poll)
+
         position, _ = MarketPosition.objects.get_or_create(
-            user=request.user, market=market
+            user=request.user,
+            market=market
         )
 
         is_yes = option.is_yes()
@@ -322,14 +333,14 @@ class PlaceBetView(APIView):
         )
 
         shares, price = market.buy(is_yes, amount)
-        bet = Bet.objects.create(
+
+        Bet.objects.create(
             user=request.user,
             poll=poll,
             option=option,
             amount=amount,
             shares=shares
         )
-
 
         if is_yes:
             position.yes_shares += shares
@@ -340,11 +351,13 @@ class PlaceBetView(APIView):
 
         position.save()
 
-
         return Response({
             "shares": round(shares, 4),
             "price": round(price, 4),
-            "new_price": market.price_yes() if is_yes else market.price_no(),
+            "new_price": round(
+                market.price_yes() if is_yes else market.price_no(),
+                4
+            ),
         })
 
 import logging
@@ -426,6 +439,7 @@ def user_positions(request):
         .values(
             "poll__id",
             "poll__title",
+            "poll__status",
             "option__id",
             "option__text",
         )
@@ -441,10 +455,12 @@ def user_positions(request):
     for b in bets:
         avg_price = b["total_cost"] / b["shares"]
 
-        # pull live price from market
+        # Pull live price from the related market
         option = PollOption.objects.get(id=b["option__id"])
-        current_price = option.market_price()
+        market = option.poll.market
+        current_price = market.price_yes() if option.is_yes() else market.price_no()
 
+        # Calculate PnL
         market_value = b["shares"] * current_price
         pnl = market_value - b["shares"] * avg_price
 
@@ -455,11 +471,12 @@ def user_positions(request):
             "shares": round(b["shares"], 4),
             "avg_price": round(avg_price, 4),
             "current_price": round(current_price, 4),
-            "value": round(market_value, 2),
             "pnl": round(pnl, 2),
+            "status": b["poll__status"],  # add status for grouping
         })
 
     return Response(data)
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -509,3 +526,127 @@ def poll_stats(request):
         "new_polls_today": new_polls_today,
         "total_polls": total_polls,
     })
+
+class PollCategoryListView(ListAPIView):
+    queryset = PollCategory.objects.all()
+    serializer_class = PollCategorySerializer
+    permission_classes = [permissions.AllowAny]
+
+
+
+from .models import Challenge
+from .serializers import ChallengeSerializer, ChallengeCreateSerializer
+from rest_framework import status
+from django.db.models import Q
+
+class ChallengeListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChallengeSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        return Challenge.objects.filter(
+            Q(creator=user) | Q(opponent=user)
+        ).order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ChallengeCreateSerializer
+        return ChallengeSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(creator=self.request.user)
+
+class ChallengeDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    queryset = Challenge.objects.all()
+    serializer_class = ChallengeSerializer
+
+class ChallengeAcceptView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        challenge = get_object_or_404(Challenge, pk=pk)
+        if challenge.opponent != request.user:
+            return Response({'error': 'Not your challenge'}, status=403)
+        if challenge.status != 'pending':
+            return Response({'error': 'Challenge not pending'}, status=400)
+        if timezone.now() > challenge.expires_at:
+            challenge.status = 'expired'
+            challenge.save()
+            return Response({'error': 'Challenge expired'}, status=400)
+
+        # Convert Decimal to float for arithmetic
+        amount_float = float(challenge.amount)
+
+        # Check balances (assuming balance is a float)
+        creator_balance = challenge.creator.profile.balance
+        opponent_balance = request.user.profile.balance
+        if creator_balance < amount_float or opponent_balance < amount_float:
+            return Response({'error': 'Insufficient balance'}, status=400)
+
+        # Deduct funds
+        challenge.creator.profile.balance -= amount_float
+        challenge.creator.profile.save()
+        request.user.profile.balance -= amount_float
+        request.user.profile.save()
+
+        challenge.status = 'accepted'
+        challenge.save()
+        return Response({'message': 'Challenge accepted'})
+    
+
+class ChallengeResolveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        challenge = get_object_or_404(Challenge, pk=pk)
+        if challenge.creator != request.user and challenge.opponent != request.user:
+            return Response({'error': 'Not your challenge'}, status=403)
+        if challenge.status != 'accepted':
+            return Response({'error': 'Challenge not accepted'}, status=400)
+
+        winning_outcome = request.data.get('winning_outcome')
+        if winning_outcome not in ['yes', 'no']:
+            return Response({'error': 'Invalid outcome'}, status=400)
+
+        # Determine winner
+        if challenge.creator_choice == winning_outcome:
+            winner = challenge.creator
+        else:
+            winner = challenge.opponent
+
+        payout = float(challenge.amount) * 2
+
+        # Credit winner
+        winner.profile.balance += payout
+        winner.profile.save()
+
+        challenge.status = 'resolved'
+        challenge.winner = winner
+        challenge.save()
+
+        return Response({'message': 'Challenge resolved', 'winner': winner.username})
+
+class ChallengeCancelView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        challenge = get_object_or_404(Challenge, pk=pk)
+        if challenge.creator != request.user:
+            return Response({'error': 'Only creator can cancel'}, status=403)
+        if challenge.status not in ['pending', 'accepted']:
+            return Response({'error': 'Cannot cancel now'}, status=400)
+
+        if challenge.status == 'accepted':
+            # Refund both
+            challenge.creator.profile.balance += challenge.amount
+            challenge.creator.profile.save()
+            challenge.opponent.profile.balance += challenge.amount
+            challenge.opponent.profile.save()
+
+        challenge.status = 'cancelled'
+        challenge.save()
+        return Response({'message': 'Challenge cancelled'})

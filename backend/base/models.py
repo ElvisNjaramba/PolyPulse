@@ -283,3 +283,37 @@ class MarketPriceSnapshot(models.Model):
     class Meta:
         ordering = ["created_at"]
 
+
+
+class Challenge(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('resolved', 'Resolved'),
+        ('cancelled', 'Cancelled'),
+        ('expired', 'Expired'),
+    )
+    CHOICES = [
+        ('yes', 'Yes'),
+        ('no', 'No'),
+    ]
+
+    creator = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='challenges_created'
+    )
+    opponent = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='challenges_received'
+    )
+    creator_choice = models.CharField(max_length=3, choices=CHOICES, default='yes')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    question = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    expires_at = models.DateTimeField()
+    winner = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='challenges_won'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.creator} vs {self.opponent} – {self.amount}"

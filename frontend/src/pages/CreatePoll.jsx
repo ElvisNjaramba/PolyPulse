@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, X, Clock, DollarSign, Hash, Calendar } from "lucide-react";
 import api from "../api/axios";
@@ -9,27 +9,42 @@ const CreatePoll = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Categories from backend
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    category: "general",
+    category: "",
     closing_time: "",
     is_free: false,
+    min_bet: 10,               // default min bet
     options: [
       { text: "Yes", price: 0.5 },
       { text: "No", price: 0.5 }
     ]
   });
 
-  const categories = [
-    { id: "general", name: "General", color: "from-gray-500 to-gray-700" },
-    { id: "politics", name: "Politics", color: "from-red-500 to-pink-500" },
-    { id: "sports", name: "Sports", color: "from-green-500 to-emerald-500" },
-    { id: "crypto", name: "Crypto", color: "from-yellow-500 to-amber-500" },
-    { id: "stocks", name: "Stocks", color: "from-blue-500 to-cyan-500" },
-    { id: "entertainment", name: "Entertainment", color: "from-purple-500 to-pink-500" },
-    { id: "technology", name: "Technology", color: "from-indigo-500 to-purple-500" },
-  ];
+  // Fetch categories on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await api.get("/categories/");  // adjust URL as needed
+        setCategories(response.data);
+        if (response.data.length > 0) {
+          // Preselect first category
+          setFormData(prev => ({ ...prev, category: response.data[0].slug }));
+        }
+      } catch (err) {
+        console.error("Failed to load categories", err);
+        setError("Could not load categories. Please refresh.");
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -39,24 +54,8 @@ const CreatePoll = () => {
     }));
   };
 
-  const handleOptionChange = (index, field, value) => {
-    const newOptions = [...formData.options];
-    newOptions[index][field] = field === "price" ? parseFloat(value) || 0 : value;
-    setFormData(prev => ({ ...prev, options: newOptions }));
-  };
-
-  const addOption = () => {
-    setFormData(prev => ({
-      ...prev,
-      options: [...prev.options, { text: "", price: 0.5 }]
-    }));
-  };
-
-  const removeOption = (index) => {
-    if (formData.options.length > 2) {
-      const newOptions = formData.options.filter((_, i) => i !== index);
-      setFormData(prev => ({ ...prev, options: newOptions }));
-    }
+  const handleCategorySelect = (slug) => {
+    setFormData(prev => ({ ...prev, category: slug }));
   };
 
   const handleSubmit = async (e) => {
@@ -70,29 +69,38 @@ const CreatePoll = () => {
       if (!formData.title.trim()) {
         throw new Error("Title is required");
       }
+      if (!formData.category) {
+        throw new Error("Please select a category");
+      }
       if (!formData.closing_time) {
         throw new Error("Closing time is required");
       }
-      if (formData.options.some(opt => !opt.text.trim())) {
-        throw new Error("All options must have text");
+      if (formData.min_bet < 1) {
+        throw new Error("Minimum bet must be at least 1");
       }
       if (new Date(formData.closing_time) <= new Date()) {
         throw new Error("Closing time must be in the future");
       }
 
+      // Build payload exactly as backend expects
       const payload = {
-        ...formData,
-        options: formData.options.map(opt => ({
-          text: opt.text,
-          price: parseFloat(opt.price)
-        }))
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,               // slug string
+        is_free: formData.is_free,
+        min_bet: parseInt(formData.min_bet, 10),   // ensure integer
+        closes_at: formData.closing_time,           // renamed field
+        options: [
+          { text: "Yes" },   // only text, no price
+          { text: "No" }
+        ]
       };
 
       const response = await api.post("/polls/create/", payload);
       setSuccess("Market created successfully!");
-      
+
       setTimeout(() => {
-        navigate(`/polls/${response.data.id}`);
+        navigate(`/polls/${response.data.poll_id}`);
       }, 1500);
     } catch (err) {
       setError(err.response?.data?.detail || err.message || "Failed to create market");
@@ -100,6 +108,15 @@ const CreatePoll = () => {
       setLoading(false);
     }
   };
+
+  // Display loading while fetching categories
+  if (categoriesLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6 flex items-center justify-center">
+        <div className="text-white">Loading categories...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
@@ -118,7 +135,7 @@ const CreatePoll = () => {
           >
             ← Back to Markets
           </button>
-          
+
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
             🚀 Create New Market
           </h1>
@@ -131,7 +148,7 @@ const CreatePoll = () => {
             ⚠️ {error}
           </div>
         )}
-        
+
         {success && (
           <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 animate-fadeIn">
             ✅ {success}
@@ -142,7 +159,7 @@ const CreatePoll = () => {
           {/* Market Basics Card */}
           <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-6">
             <h2 className="text-xl font-bold text-white mb-4">Market Basics</h2>
-            
+
             <div className="space-y-4">
               {/* Title */}
               <div>
@@ -175,27 +192,45 @@ const CreatePoll = () => {
                 />
               </div>
 
-              {/* Category */}
+              {/* Category - from backend */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Category
                 </label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {categories.map(cat => (
-                    <button
-                      type="button"
-                      key={cat.id}
-                      onClick={() => setFormData(prev => ({ ...prev, category: cat.id }))}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                        formData.category === cat.id
-                          ? `bg-gradient-to-r ${cat.color} text-white shadow-lg`
-                          : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
-                      }`}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
-                </div>
+                {categories.length === 0 ? (
+                  <p className="text-gray-500">No categories available</p>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {categories.map((cat, index) => {
+                      // Assign a consistent gradient based on index or slug
+                      const gradients = [
+                        "from-gray-500 to-gray-700",
+                        "from-red-500 to-pink-500",
+                        "from-green-500 to-emerald-500",
+                        "from-yellow-500 to-amber-500",
+                        "from-blue-500 to-cyan-500",
+                        "from-purple-500 to-pink-500",
+                        "from-indigo-500 to-purple-500",
+                      ];
+                      const gradient = gradients[index % gradients.length];
+                      const isSelected = formData.category === cat.slug;
+                      return (
+                        <button
+                          type="button"
+                          key={cat.slug}
+                          onClick={() => handleCategorySelect(cat.slug)}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            isSelected
+                              ? `bg-gradient-to-r ${gradient} text-white shadow-lg`
+                              : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
+                          }`}
+                        >
+                          {cat.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -203,7 +238,7 @@ const CreatePoll = () => {
           {/* Market Settings Card */}
           <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-6">
             <h2 className="text-xl font-bold text-white mb-4">Market Settings</h2>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Closing Time */}
               <div>
@@ -224,8 +259,29 @@ const CreatePoll = () => {
                 </p>
               </div>
 
-              {/* Market Type */}
+              {/* Minimum Bet */}
               <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
+                  <DollarSign size={16} />
+                  Minimum Bet *
+                </label>
+                <input
+                  type="number"
+                  name="min_bet"
+                  value={formData.min_bet}
+                  onChange={handleInputChange}
+                  min="1"
+                  step="1"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Minimum amount users can bet (in your currency)
+                </p>
+              </div>
+
+              {/* Market Type */}
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
                   <DollarSign size={16} />
                   Market Type
@@ -248,7 +304,7 @@ const CreatePoll = () => {
                     </div>
                     <span className="text-gray-300">Real Money</span>
                   </label>
-                  
+
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -276,40 +332,27 @@ const CreatePoll = () => {
             </div>
           </div>
 
-          {/* Options Card */}
+          {/* Fixed Options Card */}
           <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">Market Options</h2>
-              <button
-                type="button"
-                onClick={addOption}
-                className="px-4 py-2 bg-gray-900/50 border border-gray-800/50 text-gray-400 hover:text-white hover:border-gray-700 rounded-xl transition-all flex items-center gap-2 text-sm"
-              >
-                <Plus size={16} />
-                Add Option
-              </button>
-            </div>
-            
+            <h2 className="text-xl font-bold text-white mb-4">Market Options</h2>
             <p className="text-gray-400 text-sm mb-6">
-              Define the possible outcomes. Each option starts at $0.50 (50% probability)
+              Every market has exactly two outcomes: Yes and No, each starting at a 50% probability (price 0.50).
             </p>
 
             <div className="space-y-4">
               {formData.options.map((option, index) => (
-                <div key={index} className="flex items-center gap-4">
+                <div key={index} className="flex items-center gap-4 opacity-75">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-8 h-8 rounded-lg bg-gray-900/50 border border-gray-800/50 flex items-center justify-center text-sm font-bold text-gray-400">
-                        {String.fromCharCode(65 + index)}
+                        {index === 0 ? "Y" : "N"}
                       </div>
                       <div className="flex-1">
                         <input
                           type="text"
                           value={option.text}
-                          onChange={(e) => handleOptionChange(index, "text", e.target.value)}
-                          placeholder={`Option ${index + 1}`}
-                          className="w-full px-4 py-2 bg-gray-900/50 border border-gray-800/50 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
-                          required
+                          disabled
+                          className="w-full px-4 py-2 bg-gray-800/30 border border-gray-700/50 rounded-lg text-gray-400 cursor-not-allowed"
                         />
                       </div>
                     </div>
@@ -320,12 +363,10 @@ const CreatePoll = () => {
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
-                          min="0"
-                          max="1"
-                          step="0.01"
                           value={option.price}
-                          onChange={(e) => handleOptionChange(index, "price", e.target.value)}
-                          className="w-24 px-3 py-2 bg-gray-900/50 border border-gray-800/50 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
+                          disabled
+                          step="0.01"
+                          className="w-24 px-3 py-2 bg-gray-800/30 border border-gray-700/50 rounded-lg text-gray-400 cursor-not-allowed"
                         />
                         <span className="text-gray-400 text-sm">
                           ({(option.price * 100).toFixed(0)}% probability)
@@ -333,16 +374,6 @@ const CreatePoll = () => {
                       </div>
                     </div>
                   </div>
-                  
-                  {formData.options.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => removeOption(index)}
-                      className="p-2 text-gray-500 hover:text-red-400 transition-colors"
-                    >
-                      <X size={18} />
-                    </button>
-                  )}
                 </div>
               ))}
             </div>

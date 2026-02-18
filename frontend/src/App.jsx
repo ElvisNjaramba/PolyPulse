@@ -23,6 +23,9 @@ import CheckEmail from "./pages/CheckEmail";
 import PollsList from "./components/PollList";
 import AppLayout from "./components/AppLayout";
 import { AuthProvider } from "./context/AuthContext";
+import Positions from "./pages/Positions";
+import ChallengeList from "./pages/ChallengeList";
+import ChallengeCreate from "./pages/ChallengeCreate";
 
 function App() {
   return (
@@ -50,6 +53,9 @@ function App() {
             <Route path="/polls" element={<PollsList />} />
             <Route path="/create/poll" element={<CreatePoll />} />
             <Route path="/manage/polls" element={<ManagePolls />} />
+            <Route path="/positions" element={<Positions />} />
+            <Route path="/challenges" element={<ChallengeList />} />
+            <Route path="/challenges/new" element={<ChallengeCreate />} />
             <Route
               path="/wallet"
               element={

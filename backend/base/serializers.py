@@ -1,9 +1,13 @@
 from rest_framework import serializers
 
 from wallet.models import WalletTransaction
-from .models import MarketPosition, MarketPriceSnapshot, Notification, Poll, PollComment, PollOption, Bet
+from .models import Challenge, MarketPosition, MarketPriceSnapshot, Notification, Poll, PollCategory, PollComment, PollOption, Bet, User
 from django.db.models import Sum
 from .models import Market
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
 
 class PollOptionSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
@@ -186,6 +190,10 @@ class PollDetailSerializer(serializers.ModelSerializer):
         return round((market.no_shares / total) * 100, 2)
 
 class PollCreateSerializer(serializers.ModelSerializer):
+    category = serializers.SlugRelatedField(
+        queryset=PollCategory.objects.all(),
+        slug_field="slug"
+    )
     options = PollOptionSerializer(many=True)
 
     class Meta:
@@ -223,11 +231,6 @@ class PollCreateSerializer(serializers.ModelSerializer):
                 poll=poll,
                 text=option["text"]
             )
-
-        Market.objects.create(
-            poll=poll,
-            liquidity_b=100.0
-        )
 
         return poll
 
@@ -311,17 +314,18 @@ class BetCreateSerializer(serializers.ModelSerializer):
         if option.poll_id != poll.id:
             raise serializers.ValidationError("Invalid option for this poll.")
 
-        if not poll.is_free:
+        if poll.is_free:
+            data["amount"] = 1.0
+        else:
             if amount < poll.min_bet:
                 raise serializers.ValidationError(
                     f"Minimum bet is {poll.min_bet}"
                 )
 
             if profile.balance < amount:
-                raise serializers.ValidationError("Insufficient balance.")
-
-            if poll.is_free:
-                amount = 1.0
+                raise serializers.ValidationError(
+                    "Insufficient balance."
+                )
 
         if Bet.objects.filter(user=user, poll=poll).exists():
             raise serializers.ValidationError(
@@ -458,3 +462,62 @@ class MarketPriceSnapshotSerializer(serializers.ModelSerializer):
     class Meta:
         model = MarketPriceSnapshot
         fields = ["yes_price", "no_price", "created_at"]
+
+
+class PollCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PollCategory
+        fields = ['id', 'name', 'slug']
+
+
+
+class ChallengeSerializer(serializers.ModelSerializer):
+    creator_username = serializers.CharField(source='creator.username', read_only=True)
+    opponent_username = serializers.CharField(source='opponent.username', read_only=True)
+    is_creator = serializers.SerializerMethodField()
+    is_opponent = serializers.SerializerMethodField()
+    creator_choice_display = serializers.CharField(source='get_creator_choice_display', read_only=True)
+    opponent_choice = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Challenge
+        fields = [
+            'id', 'creator', 'creator_username', 'opponent', 'opponent_username',
+            'amount', 'question', 'status', 'expires_at', 'winner', 'created_at',
+            'is_creator', 'is_opponent', 'creator_choice', 'creator_choice_display', 'opponent_choice'
+        ]
+        read_only_fields = ['creator', 'status', 'winner']
+
+    def get_is_creator(self, obj):
+        request = self.context.get('request')
+        return request and request.user == obj.creator
+
+    def get_is_opponent(self, obj):
+        request = self.context.get('request')
+        return request and request.user == obj.opponent
+
+    def get_opponent_choice(self, obj):
+        return 'no' if obj.creator_choice == 'yes' else 'yes'
+
+class ChallengeCreateSerializer(serializers.ModelSerializer):
+    opponent_username = serializers.CharField(write_only=True)
+    creator_choice = serializers.ChoiceField(choices=['yes', 'no'])
+
+    class Meta:
+        model = Challenge
+        fields = ['opponent_username', 'amount', 'question', 'expires_at', 'creator_choice']
+
+    def validate_opponent_username(self, value):
+        try:
+            opponent = User.objects.get(username=value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User not found")
+        if opponent == self.context['request'].user:
+            raise serializers.ValidationError("You cannot challenge yourself")
+        return opponent
+
+    def create(self, validated_data):
+        opponent = validated_data.pop('opponent_username')
+        validated_data['opponent'] = opponent
+        validated_data['creator'] = self.context['request'].user
+        return Challenge.objects.create(**validated_data)
