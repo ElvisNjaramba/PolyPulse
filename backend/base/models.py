@@ -117,6 +117,11 @@ class Notification(models.Model):
         ("bet_won", "Bet Won"),
         ("bet_refunded", "Bet Refunded"),
         ("poll_resolved", "Poll Resolved"),
+        # New challenge types
+        ("challenge_accepted", "Challenge Accepted"),
+        ("challenge_won", "Challenge Won"),
+        ("challenge_lost", "Challenge Lost"),
+        ("challenge_cancelled", "Challenge Cancelled"),
     )
 
     user = models.ForeignKey(

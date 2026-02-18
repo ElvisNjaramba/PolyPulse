@@ -1,14 +1,13 @@
 import { useEffect, useState, useMemo } from "react";
 import api from "../api/axios";
 
-const ITEMS_PER_PAGE = 10;
-
 const Positions = () => {
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   useEffect(() => {
     api
@@ -28,11 +27,11 @@ const Positions = () => {
   }, [positions, filter]);
 
   // Pagination calculations
-  const totalPages = Math.ceil(filteredPositions.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredPositions.length / itemsPerPage);
   const paginatedPositions = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredPositions.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredPositions, currentPage]);
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredPositions.slice(start, start + itemsPerPage);
+  }, [filteredPositions, currentPage, itemsPerPage]);
 
   // Group paginated positions by status
   const grouped = useMemo(() => {
@@ -64,10 +63,15 @@ const Positions = () => {
     unknown: { label: "📦 Other", bg: "bg-purple-500/10", border: "border-purple-500/20", text: "text-purple-400" },
   };
 
-  // Reset to first page when filter changes
+  // Reset to first page when filter or items per page changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [filter]);
+  }, [filter, itemsPerPage]);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   if (loading) {
     return (
@@ -250,34 +254,70 @@ const Positions = () => {
           );
         })}
 
-        {/* Pagination Controls */}
-        {filteredPositions.length > ITEMS_PER_PAGE && (
-          <div className="mt-8 flex items-center justify-center gap-4">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 bg-gray-900/50 border border-gray-800/50 rounded-xl text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              ← Previous
-            </button>
-            <span className="text-gray-300">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="px-4 py-2 bg-gray-900/50 border border-gray-800/50 rounded-xl text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-            >
-              Next →
-            </button>
-          </div>
-        )}
-
-        {/* Note about pagination (optional) */}
+        {/* Enhanced Pagination Controls */}
         {filteredPositions.length > 0 && (
-          <p className="text-center text-xs text-gray-600 mt-4">
-            Showing {paginatedPositions.length} of {filteredPositions.length} positions
-          </p>
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <span>Show</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                className="bg-gray-900/50 border border-gray-800 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+              >
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+              <span>per page</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">
+                {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredPositions.length)} of {filteredPositions.length}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 rounded-lg bg-gray-900/50 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  ←
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => handlePageChange(pageNum)}
+                      className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${
+                        currentPage === pageNum
+                          ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg"
+                          : "bg-gray-900/50 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 rounded-lg bg-gray-900/50 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

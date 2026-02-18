@@ -19,7 +19,7 @@ const CreatePoll = () => {
     category: "",
     closing_time: "",
     is_free: false,
-    min_bet: 10,               // default min bet
+    min_bet: 10,
     options: [
       { text: "Yes", price: 0.5 },
       { text: "No", price: 0.5 }
@@ -30,7 +30,7 @@ const CreatePoll = () => {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await api.get("/categories/");  // adjust URL as needed
+        const response = await api.get("/categories/");
         setCategories(response.data);
         if (response.data.length > 0) {
           // Preselect first category
@@ -65,33 +65,21 @@ const CreatePoll = () => {
     setSuccess("");
 
     try {
-      // Validation
-      if (!formData.title.trim()) {
-        throw new Error("Title is required");
-      }
-      if (!formData.category) {
-        throw new Error("Please select a category");
-      }
-      if (!formData.closing_time) {
-        throw new Error("Closing time is required");
-      }
-      if (formData.min_bet < 1) {
-        throw new Error("Minimum bet must be at least 1");
-      }
-      if (new Date(formData.closing_time) <= new Date()) {
-        throw new Error("Closing time must be in the future");
-      }
+      if (!formData.title.trim()) throw new Error("Title is required");
+      if (!formData.category) throw new Error("Please select a category");
+      if (!formData.closing_time) throw new Error("Closing time is required");
+      if (formData.min_bet < 1) throw new Error("Minimum bet must be at least 1");
+      if (new Date(formData.closing_time) <= new Date()) throw new Error("Closing time must be in the future");
 
-      // Build payload exactly as backend expects
       const payload = {
         title: formData.title,
         description: formData.description,
-        category: formData.category,               // slug string
+        category: formData.category,
         is_free: formData.is_free,
-        min_bet: parseInt(formData.min_bet, 10),   // ensure integer
-        closes_at: formData.closing_time,           // renamed field
+        min_bet: parseInt(formData.min_bet, 10),
+        closes_at: formData.closing_time,
         options: [
-          { text: "Yes" },   // only text, no price
+          { text: "Yes" },
           { text: "No" }
         ]
       };
@@ -109,7 +97,6 @@ const CreatePoll = () => {
     }
   };
 
-  // Display loading while fetching categories
   if (categoriesLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6 flex items-center justify-center">
@@ -120,6 +107,24 @@ const CreatePoll = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
+      {/* Scrollbar styles */}
+      <style jsx global>{`
+        .categories-scrollbar::-webkit-scrollbar {
+          height: 6px;
+        }
+        .categories-scrollbar::-webkit-scrollbar-track {
+          background: rgba(15, 23, 42, 0.5);
+          border-radius: 3px;
+        }
+        .categories-scrollbar::-webkit-scrollbar-thumb {
+          background: linear-gradient(to right, #06b6d4, #3b82f6);
+          border-radius: 3px;
+        }
+        .categories-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(to right, #0891b2, #2563eb);
+        }
+      `}</style>
+
       {/* Background Effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl" />
@@ -137,7 +142,7 @@ const CreatePoll = () => {
           </button>
 
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
-            🚀 Create New Market
+            Create New Market
           </h1>
           <p className="text-gray-400 mt-2">Create your own prediction market and let others join in</p>
         </div>
@@ -148,7 +153,6 @@ const CreatePoll = () => {
             ⚠️ {error}
           </div>
         )}
-
         {success && (
           <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 animate-fadeIn">
             ✅ {success}
@@ -171,7 +175,7 @@ const CreatePoll = () => {
                   name="title"
                   value={formData.title}
                   onChange={handleInputChange}
-                  placeholder="e.g., Will Bitcoin reach $100K by end of 2024?"
+                  placeholder="e.g., Will Bitcoin reach $200K by end of 2026?"
                   className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
                   required
                 />
@@ -200,35 +204,42 @@ const CreatePoll = () => {
                 {categories.length === 0 ? (
                   <p className="text-gray-500">No categories available</p>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {categories.map((cat, index) => {
-                      // Assign a consistent gradient based on index or slug
-                      const gradients = [
-                        "from-gray-500 to-gray-700",
-                        "from-red-500 to-pink-500",
-                        "from-green-500 to-emerald-500",
-                        "from-yellow-500 to-amber-500",
-                        "from-blue-500 to-cyan-500",
-                        "from-purple-500 to-pink-500",
-                        "from-indigo-500 to-purple-500",
-                      ];
-                      const gradient = gradients[index % gradients.length];
-                      const isSelected = formData.category === cat.slug;
-                      return (
-                        <button
-                          type="button"
-                          key={cat.slug}
-                          onClick={() => handleCategorySelect(cat.slug)}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                            isSelected
-                              ? `bg-gradient-to-r ${gradient} text-white shadow-lg`
-                              : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
-                          }`}
-                        >
-                          {cat.name}
-                        </button>
-                      );
-                    })}
+                  <div className="relative">
+                    {/* Scrollable container */}
+                    <div className="categories-scrollbar overflow-x-auto pb-3 scrollbar-thin">
+                      <div className="flex gap-2 min-w-max">
+                        {categories.map((cat, index) => {
+                          const gradients = [
+                            "from-gray-500 to-gray-700",
+                            "from-red-500 to-pink-500",
+                            "from-green-500 to-emerald-500",
+                            "from-yellow-500 to-amber-500",
+                            "from-blue-500 to-cyan-500",
+                            "from-purple-500 to-pink-500",
+                            "from-indigo-500 to-purple-500",
+                          ];
+                          const gradient = gradients[index % gradients.length];
+                          const isSelected = formData.category === cat.slug;
+
+                          return (
+                            <button
+                              type="button"
+                              key={cat.slug}
+                              onClick={() => handleCategorySelect(cat.slug)}
+                              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                isSelected
+                                  ? `bg-gradient-to-r ${gradient} text-white shadow-lg shadow-cyan-500/20`
+                                  : "bg-gray-900/50 border border-gray-800/50 text-gray-400 hover:bg-gray-800/50 hover:text-white"
+                              }`}
+                            >
+                              {cat.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {/* Optional fade edge */}
+                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-gray-900 to-transparent pointer-events-none"></div>
                   </div>
                 )}
               </div>
@@ -240,30 +251,24 @@ const CreatePoll = () => {
             <h2 className="text-xl font-bold text-white mb-4">Market Settings</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Closing Time */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <Clock size={16} />
-                  Closing Time *
+                  <Clock size={16} /> Closing Time *
                 </label>
                 <input
                   type="datetime-local"
                   name="closing_time"
                   value={formData.closing_time}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-2">
-                  When should betting close? (Minimum 1 hour from now)
-                </p>
+                <p className="text-xs text-gray-500 mt-2">Minimum 1 hour from now</p>
               </div>
 
-              {/* Minimum Bet */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <DollarSign size={16} />
-                  Minimum Bet *
+                  <DollarSign size={16} /> Minimum Bet *
                 </label>
                 <input
                   type="number"
@@ -272,19 +277,14 @@ const CreatePoll = () => {
                   onChange={handleInputChange}
                   min="1"
                   step="1"
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-2">
-                  Minimum amount users can bet (in your currency)
-                </p>
               </div>
 
-              {/* Market Type */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                  <DollarSign size={16} />
-                  Market Type
+                  <DollarSign size={16} /> Market Type
                 </label>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -304,7 +304,6 @@ const CreatePoll = () => {
                     </div>
                     <span className="text-gray-300">Real Money</span>
                   </label>
-
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -324,9 +323,7 @@ const CreatePoll = () => {
                   </label>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  {formData.is_free 
-                    ? "Users can bet with virtual credits" 
-                    : "Users bet with real money"}
+                  {formData.is_free ? "Virtual credits" : "Real money bets"}
                 </p>
               </div>
             </div>
@@ -336,7 +333,7 @@ const CreatePoll = () => {
           <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-6">
             <h2 className="text-xl font-bold text-white mb-4">Market Options</h2>
             <p className="text-gray-400 text-sm mb-6">
-              Every market has exactly two outcomes: Yes and No, each starting at a 50% probability (price 0.50).
+              Every market has exactly two outcomes: Yes and No, each starting at 50% probability (price 0.50).
             </p>
 
             <div className="space-y-4">
@@ -357,9 +354,7 @@ const CreatePoll = () => {
                       </div>
                     </div>
                     <div className="ml-10">
-                      <label className="block text-xs text-gray-400 mb-1">
-                        Starting Price
-                      </label>
+                      <label className="block text-xs text-gray-400 mb-1">Starting Price</label>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -404,7 +399,6 @@ const CreatePoll = () => {
             </button>
           </div>
 
-          {/* Form Help */}
           <div className="text-center text-gray-500 text-sm">
             <p>Market will be reviewed and activated shortly after creation.</p>
             <p className="mt-1">All markets must comply with our terms of service.</p>

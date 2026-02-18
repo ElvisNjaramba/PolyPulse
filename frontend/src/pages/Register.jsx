@@ -109,7 +109,7 @@ export default function Register() {
       <div className="absolute -top-1/3 -right-1/3 h-[500px] w-[500px] rounded-full bg-cyan-500/10 blur-3xl" />
       <div className="absolute -bottom-1/3 -left-1/3 h-[500px] w-[500px] rounded-full bg-blue-500/10 blur-3xl" />
 
-      {/* card */}
+      {/* card – two columns */}
       <div className="relative z-10 w-full max-w-5xl rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-10 shadow-2xl">
 
         {/* header */}
@@ -172,7 +172,7 @@ export default function Register() {
               name="phone_number"
               value={formData.phone_number}
               onChange={handleChange}
-              placeholder="+1 555 123 4567"
+              placeholder="+254 700 000 000"
               disabled={isLoading}
             />
 
@@ -195,10 +195,10 @@ export default function Register() {
                 onChange={handleChange}
                 disabled={isLoading}
                 placeholder="Create a strong password"
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-4 text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-4 text-white outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 disabled:opacity-50"
               />
 
-              {/* strength */}
+              {/* strength meter */}
               <div className="mt-3">
                 <div className="h-1 w-full rounded bg-white/10 overflow-hidden">
                   <div
@@ -258,6 +258,14 @@ export default function Register() {
             )}
           </button>
         </form>
+
+        {/* Login link */}
+        <p className="text-center text-sm text-gray-400 mt-6">
+          Already have an account?{" "}
+          <Link to="/login" className="text-cyan-400 hover:underline font-medium">
+            Sign In
+          </Link>
+        </p>
       </div>
     </div>
   );

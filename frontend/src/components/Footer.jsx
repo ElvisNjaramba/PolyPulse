@@ -1,15 +1,32 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
+import api from "../api/axios";
 
 const Footer = ({ isCollapsed }) => {
   const currentYear = new Date().getFullYear();
   const [isMobile, setIsMobile] = useState(false);
+  const [activeTraders, setActiveTraders] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await api.get("/poll-stats/");
+        setActiveTraders(res.data.active_traders);
+      } catch (error) {
+        console.error("Failed to fetch stats", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStats();
   }, []);
 
   const footerMargin = isMobile ? "ml-0" : isCollapsed ? "ml-[80px]" : "ml-[280px]";
@@ -69,21 +86,24 @@ const Footer = ({ isCollapsed }) => {
           {/* Right */}
           <div className="flex items-center gap-4">
 
-            {/* Live Status */}
-            <div className="hidden sm:flex items-center gap-3 text-xs">
-              <div className="flex items-center gap-2 text-emerald-400">
+            {/* Live Status – now with real trader count */}
+            <div className="flex items-center gap-3 text-xs">
+              {/* <div className="flex items-center gap-2 text-emerald-400">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
                 </span>
                 Live
-              </div>
+              </div> */}
 
-              <span className="text-gray-500">|</span>
+              <span className="text-gray-500 hidden sm:inline">|</span>
 
-              <span className="text-gray-400">
-                <span className="text-emerald-400 font-medium">1,245</span> traders
-              </span>
+              {/* <span className="text-gray-400">
+                <span className="text-emerald-400 font-medium">
+                  {loading ? "..." : activeTraders?.toLocaleString() || "0"}
+                </span>{" "}
+                <span className="hidden sm:inline">traders</span>
+              </span> */}
             </div>
 
             {/* Social */}
@@ -112,11 +132,14 @@ const Footer = ({ isCollapsed }) => {
             </div>
           </div>
 
-          {/* Mobile Links */}
+          {/* Mobile Links – always visible, includes real trader count */}
           <div className="flex md:hidden w-full justify-center gap-4 mt-3 pt-3 border-t border-white/10 text-xs">
             <Link to="/terms" className="text-gray-400 hover:text-cyan-400">Terms</Link>
             <Link to="/privacy" className="text-gray-400 hover:text-cyan-400">Privacy</Link>
             <Link to="/faq" className="text-gray-400 hover:text-cyan-400">FAQ</Link>
+            {/* <span className="text-gray-400">
+              {loading ? "..." : activeTraders?.toLocaleString() || "0"} traders
+            </span> */}
           </div>
 
         </div>

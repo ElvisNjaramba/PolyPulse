@@ -27,6 +27,8 @@ import Positions from "./pages/Positions";
 import ChallengeList from "./pages/ChallengeList";
 import ChallengeCreate from "./pages/ChallengeCreate";
 
+import Landing from "./pages/LandingPage";
+
 function App() {
   return (
     <BrowserRouter>
@@ -34,6 +36,7 @@ function App() {
         <Routes>
 
           {/* 🌍 Public */}
+          <Route path="/"element={<Landing />}/>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/check-email" element={<CheckEmail />} />
@@ -47,7 +50,8 @@ function App() {
               </PrivateRoute>
             }
           >
-            <Route path="/" element={<Dashboard />} />
+            
+            <Route path="/dashboard" element={<Dashboard />} />
 
             <Route path="/polls/:id" element={<PollDetail />} />
             <Route path="/polls" element={<PollsList />} />

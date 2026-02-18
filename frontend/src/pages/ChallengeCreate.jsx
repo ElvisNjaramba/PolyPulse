@@ -57,7 +57,7 @@ const ChallengeCreate = () => {
             ← Back to Challenges
           </button>
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
-            ⚔️ Create a Challenge
+            Create a Challenge
           </h1>
           <p className="text-gray-400 mt-2">Bet head‑to‑head against another user</p>
         </div>

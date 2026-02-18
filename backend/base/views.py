@@ -122,18 +122,9 @@ class PollResolveView(APIView):
         poll.status = "resolved"
         poll.save()
 
-        total_pool = poll.bets.aggregate(
-            total=Sum("amount")
-        )["total"] or 0
-
-        winning_bets = Bet.objects.filter(
-            poll=poll,
-            option=poll.winning_option
-        )
-
-        winning_pool = winning_bets.aggregate(
-            total=Sum("amount")
-        )["total"] or 0
+        total_pool = poll.bets.aggregate(total=Sum("amount"))["total"] or 0
+        winning_bets = Bet.objects.filter(poll=poll, option=poll.winning_option)
+        winning_pool = winning_bets.aggregate(total=Sum("amount"))["total"] or 0
 
         if winning_pool == 0:
             return Response({"message": "No winners."})
@@ -150,6 +141,13 @@ class PollResolveView(APIView):
                 description="Market resolution payout"
             )
 
+            # ✅ Notification for each winner
+            Notification.objects.create(
+                user=bet.user,
+                actor=None,  # could be poll.creator if you want
+                notification_type='bet_won',
+                message=f'You won ${payout} on "{poll.title}"'
+            )
 
         return Response({"message": "Poll resolved successfully"})
 
@@ -515,18 +513,14 @@ class MarketPriceHistoryView(APIView):
 @permission_classes([AllowAny])
 def poll_stats(request):
     today = timezone.now().date()
-
-    new_polls_today = Poll.objects.filter(
-        created_at__date=today
-    ).count()
-
+    new_polls_today = Poll.objects.filter(created_at__date=today).count()
     total_polls = Poll.objects.count()
-
+    active_traders = User.objects.filter(bet__isnull=False).distinct().count()
     return Response({
         "new_polls_today": new_polls_today,
         "total_polls": total_polls,
+        "active_traders": active_traders,
     })
-
 class PollCategoryListView(ListAPIView):
     queryset = PollCategory.objects.all()
     serializer_class = PollCategorySerializer
@@ -594,6 +588,13 @@ class ChallengeAcceptView(APIView):
 
         challenge.status = 'accepted'
         challenge.save()
+
+        Notification.objects.create(
+            user=challenge.creator,
+            actor=request.user,
+            notification_type='challenge_accepted',  # you may need to add this to NOTIFICATION_TYPES
+            message=f'{request.user.username} accepted your challenge: {challenge.question}'
+        )
         return Response({'message': 'Challenge accepted'})
     
 
@@ -628,7 +629,25 @@ class ChallengeResolveView(APIView):
         challenge.winner = winner
         challenge.save()
 
+        # Notify winner
+        Notification.objects.create(
+            user=winner,
+            actor=None,
+            notification_type='challenge_won',
+            message=f'You won the challenge "{challenge.question}" and received ${payout}'
+        )
+
+        # Notify loser
+        loser = challenge.opponent if winner == challenge.creator else challenge.creator
+        Notification.objects.create(
+            user=loser,
+            actor=None,
+            notification_type='challenge_lost',
+            message=f'You lost the challenge "{challenge.question}"'
+        )
+
         return Response({'message': 'Challenge resolved', 'winner': winner.username})
+
 
 class ChallengeCancelView(APIView):
     permission_classes = [IsAuthenticated]
@@ -649,4 +668,14 @@ class ChallengeCancelView(APIView):
 
         challenge.status = 'cancelled'
         challenge.save()
+        if challenge.status == 'accepted':
+            Notification.objects.create(
+                user=challenge.opponent,
+                actor=request.user,
+                notification_type='challenge_cancelled',
+                message=f'{request.user.username} cancelled the challenge "{challenge.question}" – funds refunded'
+            )
         return Response({'message': 'Challenge cancelled'})
+    
+
+

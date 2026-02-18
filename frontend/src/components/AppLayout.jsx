@@ -1,47 +1,11 @@
-// import { Outlet } from "react-router-dom";
-// import Navbar from "./Navbar";
-// import { useState, useEffect } from "react";
-
-// const AppLayout = () => {
-//   const [isMobile, setIsMobile] = useState(false);
-
-//   useEffect(() => {
-//     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
-//     checkMobile();
-//     window.addEventListener("resize", checkMobile);
-//     return () => window.removeEventListener("resize", checkMobile);
-//   }, []);
-
-//   return (
-//     <div style={{
-//       display: "flex",
-//       minHeight: "100vh",
-//       backgroundColor: "#0f1525",
-//     }}>
-//       <Navbar />
-//       <main style={{
-//         flex: 1,
-//         marginLeft: isMobile ? "0" : "280px",
-//         padding: isMobile ? "20px" : "30px",
-//         paddingBottom: isMobile ? "80px" : "30px",
-//         overflowY: "auto",
-//         transition: "margin-left 0.3s ease",
-//         width: "100%",
-//       }}>
-//         <Outlet />
-//       </main>
-//     </div>
-//   );
-// };
-
-// export default AppLayout;
-
 import { Outlet } from "react-router-dom";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthContext";
 
 const AppLayout = () => {
+  const { user } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -53,27 +17,29 @@ const AppLayout = () => {
   }, []);
 
   return (
-    <div style={{
-      display: "flex",
-      flexDirection: "column",
-      minHeight: "100vh",
-      backgroundColor: "#0f1525",
-    }}>
+    <div className="flex flex-col min-h-screen bg-[#0f1525]">
       <Navbar onCollapse={setIsCollapsed} />
-      <div style={{ display: "flex", flex: 1 }}>
-        <main style={{
-          flex: 1,
-          marginLeft: isMobile ? "0" : (isCollapsed ? "80px" : "280px"),
-          padding: isMobile ? "20px" : "30px",
-          paddingBottom: isMobile ? "20px" : "30px",
-          overflowY: "auto",
-          transition: "all 0.3s ease",
-          width: "100%",
-        }}>
+      
+      <div className="flex flex-1 min-h-0"> {/* min-h-0 ensures flex child can shrink */}
+        <main
+          className={`
+            flex-1 overflow-y-auto transition-all duration-300
+            ${isMobile ? "pt-16" : ""}
+            ${isMobile && user ? "pb-24" : ""}
+          `}
+          style={{
+            marginLeft: isMobile ? 0 : isCollapsed ? 80 : 280,
+            padding: isMobile ? "0 20px" : "30px",
+          }}
+        >
           <Outlet />
         </main>
       </div>
-      <Footer isCollapsed={isCollapsed}/>
+
+      {/* Spacer when dock is present to keep footer above it */}
+      {isMobile && user && <div className="h-20" />}
+      
+      <Footer isCollapsed={isCollapsed} />
     </div>
   );
 };

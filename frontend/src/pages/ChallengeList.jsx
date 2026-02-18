@@ -94,7 +94,7 @@ const ChallengeList = () => {
       <div className="max-w-5xl mx-auto relative z-10">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-300 bg-clip-text text-transparent">
-            ⚔️ Head-to-Head Challenges
+            Duel Challenges
           </h1>
           <button
             onClick={() => navigate("/challenges/new")}

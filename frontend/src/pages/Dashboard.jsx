@@ -15,6 +15,10 @@ const Dashboard = () => {
     totalVolume: 0,
     new_polls_today: 0,
   });
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -26,54 +30,34 @@ const Dashboard = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  // useEffect(() => {
-  //   axios.get("http://127.0.0.1:8000/api/poll-stats/")
-  //     .then(res => {
-  //       setStats(res.data);
-  //     });
-  // }, []);
-
   const calculateStats = (pollsData) => {
     const totalMarkets = pollsData.length;
-
-    // 🔹 Active users: unique users who placed a bet
     const allUserIds = pollsData.flatMap(poll => poll.all_user_ids || []);
     const uniqueUserCount = new Set(allUserIds).size;
-
-    // 🔹 Total volume: sum of total_pool of all polls
     const totalVolume = pollsData.reduce(
       (sum, p) => sum + Number(p.total_pool || 0),
       0
     );
-
-
     setStats({
       totalMarkets,
-      activeMarkets: uniqueUserCount, // ✅ total unique users
+      activeMarkets: uniqueUserCount,
       totalVolume,
     });
   };
 
-
-
   const formatTimeRemaining = (closesAt) => {
     if (!closesAt) return "Unknown";
-
     const now = new Date();
     const close = new Date(closesAt);
     const diffMs = close - now;
-
     if (diffMs <= 0) return "Closed";
-
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
-
     if (diffDays > 0) return `${diffDays}d ${diffHours % 24}h`;
     if (diffHours > 0) return `${diffHours}h ${diffMinutes % 60}m`;
     return "< 1h";
   };
-
 
   const getMarketTrend = (poll) => {
     const prices = poll.options?.map(o => o.price) || [];
@@ -89,10 +73,9 @@ const Dashboard = () => {
     return "text-gray-400";
   };
 
-
+  // Categories from polls
   const categories = useMemo(() => {
     const uniqueCategories = [...new Set(polls.map(p => p.category).filter(Boolean))];
-
     return [
       {
         id: "all",
@@ -118,104 +101,64 @@ const Dashboard = () => {
     return acc;
   }, {});
 
+  // Filtered polls based on search, filter, category
+  const filteredPolls = useMemo(() => {
+    return polls.filter(poll => {
+      const isClosed = poll.closes_at
+        ? new Date(poll.closes_at) <= new Date()
+        : true;
 
-  const filteredPolls = polls.filter(poll => {
-    const isClosed = poll.closes_at
-      ? new Date(poll.closes_at) <= new Date()
-      : true;
+      if (filter === "open" && isClosed) return false;
+      if (filter === "closed" && !isClosed) return false;
+      if (filter === "high-volume" && Number(poll.total_pool || 0) <= 1000) return false;
+      if (category !== "all" && poll.category !== category) return false;
 
-    if (filter === "open" && isClosed) return false;
-    if (filter === "closed" && !isClosed) return false;
+      if (
+        search &&
+        !poll.title.toLowerCase().includes(search.toLowerCase()) &&
+        !poll.description?.toLowerCase().includes(search.toLowerCase())
+      ) {
+        return false;
+      }
 
-    if (filter === "high-volume" && Number(poll.total_pool || 0) <= 1000) return false;
-    if (category !== "all" && poll.category !== category) return false;
+      return true;
+    });
+  }, [polls, filter, category, search]);
 
-    if (
-      search &&
-      !poll.title.toLowerCase().includes(search.toLowerCase()) &&
-      !poll.description?.toLowerCase().includes(search.toLowerCase())
-    ) {
-      return false;
-    }
+  // Pagination logic
+  const totalPages = Math.ceil(filteredPolls.length / itemsPerPage);
+  const paginatedPolls = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredPolls.slice(start, start + itemsPerPage);
+  }, [filteredPolls, currentPage, itemsPerPage]);
 
-    return true;
-  });
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, category, search, itemsPerPage]);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleItemsPerPageChange = (e) => {
+    setItemsPerPage(Number(e.target.value));
+    setCurrentPage(1);
+  };
 
   const selectedCategory = categories.find(c => c.id === category);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
-      {/* Custom scrollbar styles */}
-      <style jsx global>{`
-        /* Custom scrollbar styles */
-        ::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-          background: rgba(30, 41, 59, 0.3);
-          border-radius: 10px;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-          background: linear-gradient(to bottom, #06b6d4, #3b82f6);
-          border-radius: 10px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to bottom, #0891b2, #2563eb);
-        }
-        
-        /* For Firefox */
-        * {
-          scrollbar-width: thin;
-          scrollbar-color: #06b6d4 rgba(30, 41, 59, 0.3);
-        }
-        
-        /* Custom horizontal scrollbar for categories */
-        .categories-scrollbar::-webkit-scrollbar {
-          height: 6px;
-        }
-        
-        .categories-scrollbar::-webkit-scrollbar-track {
-          background: rgba(15, 23, 42, 0.5);
-          border-radius: 3px;
-        }
-        
-        .categories-scrollbar::-webkit-scrollbar-thumb {
-          background: linear-gradient(to right, #06b6d4, #3b82f6);
-          border-radius: 3px;
-        }
-        
-        .categories-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to right, #0891b2, #2563eb);
-        }
-        
-        /* Hide scrollbar but keep functionality */
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-        
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        
-        /* Show scrollbar on hover */
-        .hover\:scrollbar-default:hover::-webkit-scrollbar {
-          display: block;
-        }
-      `}</style>
-
-      {/* Background Effects */}
+      {/* Background Effects (same) */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
-        {/* Header */}
+        {/* Header with stats (unchanged) */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
@@ -224,8 +167,6 @@ const Dashboard = () => {
               </h1>
               <p className="text-gray-400 mt-2">Trade predictions on live events and outcomes</p>
             </div>
-
-            {/* Quick Stats */}
             <div className="grid grid-cols-3 md:grid-cols-3 gap-4">
               <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
                 <div className="text-sm text-gray-400 mb-1">Total Markets</div>
@@ -238,66 +179,53 @@ const Dashboard = () => {
               <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
                 <div className="text-sm text-gray-400 mb-1">Gross Volume</div>
                 <div className="text-2xl font-bold text-cyan-400">${stats.totalVolume.toFixed(0)}</div>
-              </div>              {/* <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
-                <div className="text-sm text-gray-400 mb-1">New Polls</div>
-                <div className="text-2xl font-bold text-purple-400">
-                  {stats.new_polls_today}
-                </div>
-
               </div>
- */}
             </div>
           </div>
 
-          {/* Category Selection */}
+          {/* Category Selection - Improved with scroll and count badges */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <span className="text-2xl">🏷️</span> Categories
               </h2>
               <div className="text-sm text-gray-500">
-                Showing {categoryCounts[category] || 0} markets
+                Showing {filteredPolls.length} of {polls.length} markets
               </div>
             </div>
 
             <div className="relative">
-              <div className="categories-scrollbar overflow-x-auto pb-4">
-                <div className="flex gap-3 min-w-max">
-
-                  {categories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setCategory(cat.id)}
-                      className={`flex-shrink-0 group relative overflow-hidden rounded-2xl p-4 transition-all duration-300 min-w-[140px] ${category === cat.id
-                        ? "ring-2 ring-offset-2 ring-offset-gray-900 ring-cyan-500 shadow-xl scale-105"
-                        : "hover:scale-[1.02]"
+              <div className="categories-scrollbar overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-cyan-500 scrollbar-track-gray-800">
+                <div className="flex gap-2 min-w-max">
+                  {categories.map((cat) => {
+                    const count = categoryCounts[cat.id] || 0;
+                    const isActive = category === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setCategory(cat.id)}
+                        className={`flex-shrink-0 px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${
+                          isActive
+                            ? `bg-gradient-to-r ${cat.color} text-white shadow-lg`
+                            : 'bg-gray-900/50 border border-gray-800/50 text-gray-400 hover:bg-gray-800/50 hover:text-white'
                         }`}
-                    >
-                      <div className={`absolute inset-0 bg-gradient-to-br ${cat.color} ${category === cat.id ? 'opacity-100' : 'opacity-20'
-                        } group-hover:opacity-30 transition-opacity`} />
-                      <div className="relative z-10">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-2xl">{cat.icon}</span>
-                          <div className="text-right ml-auto">
-                            <div className="text-xs text-white/80">Markets</div>
-                            <div className="text-lg font-bold text-white">{categoryCounts[cat.id] || 0}</div>
-                          </div>
-                        </div>
-                        <div className="font-semibold text-white text-sm truncate">{cat.name}</div>
-                        {category === cat.id && (
-                          <div className="absolute -bottom-2 -right-2 w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center">
-                            <div className="w-2 h-2 bg-white rounded-full" />
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                      >
+                        <span>{cat.icon}</span>
+                        <span className="text-sm font-medium">{cat.name}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          isActive ? 'bg-white/20' : 'bg-gray-800'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Search and Status Filters */}
+          {/* Search and Filters (unchanged) */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1">
               <div className="relative">
@@ -313,18 +241,18 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-
-            <div className="flex gap-2 overflow-x-auto pb-2 categories-scrollbar scrollbar-hide hover:scrollbar-default">
+            <div className="flex gap-2 overflow-x-auto pb-2 categories-scrollbar">
               {["all", "open", "closed"].map((filterType) => (
                 <button
                   key={filterType}
                   onClick={() => setFilter(filterType)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${filter === filterType
-                    ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20"
-                    : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
-                    }`}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                    filter === filterType
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20"
+                      : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
+                  }`}
                 >
-                  {filterType.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")}
+                  {filterType === 'all' ? 'All' : filterType === 'open' ? 'Open' : 'Closed'}
                 </button>
               ))}
             </div>
@@ -339,7 +267,7 @@ const Dashboard = () => {
           </div>
         ) : (
           <>
-            {/* Category Header */}
+            {/* Category Header (unchanged) */}
             {category !== "all" && selectedCategory && (
               <div className="mb-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -352,7 +280,8 @@ const Dashboard = () => {
                         {selectedCategory.name}
                       </h2>
                       <p className="text-gray-400">
-                        {filteredPolls.length} {filteredPolls.length === 1 ? 'market' : 'markets'} available • ${filteredPolls.reduce((sum, p) => sum + Number(p.total_pool || 0), 0).toFixed(0)} volume
+                        {filteredPolls.length} {filteredPolls.length === 1 ? 'market' : 'markets'} available • $
+                        {filteredPolls.reduce((sum, p) => sum + Number(p.total_pool || 0), 0).toFixed(0)} volume
                       </p>
                     </div>
                   </div>
@@ -360,39 +289,27 @@ const Dashboard = () => {
                     onClick={() => setCategory("all")}
                     className="flex items-center gap-2 px-4 py-2 bg-gray-900/50 border border-gray-800/50 rounded-xl text-cyan-400 hover:text-cyan-300 text-sm font-medium hover:border-gray-700 transition-all"
                   >
-                    <span>←</span>
-                    Back to All Markets
+                    <span>←</span> Back to All Markets
                   </button>
                 </div>
               </div>
             )}
 
             {/* Markets Grid */}
-            {filteredPolls.length === 0 ? (
+            {paginatedPolls.length === 0 ? (
               <div className="text-center py-20">
-                <div className="text-6xl mb-4">
-                  {selectedCategory?.icon || "📊"}
-                </div>
+                <div className="text-6xl mb-4">{selectedCategory?.icon || "📊"}</div>
                 <h3 className="text-2xl font-bold text-white mb-2">
-                  {search ? "No markets found" : `No markets found in ${selectedCategory?.name || 'this category'}`}
+                  {search ? "No markets found" : `No markets in ${selectedCategory?.name || 'this category'}`}
                 </h3>
                 <p className="text-gray-400 mb-6">
                   {search ? "Try a different search term" : "Check back soon or explore other categories"}
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <button
-                    onClick={() => setSearch("")}
-                    className="px-6 py-3 bg-gray-900/50 border border-gray-800/50 text-white font-medium rounded-xl hover:border-gray-700 transition-all"
-                  >
+                  <button onClick={() => setSearch("")} className="px-6 py-3 bg-gray-900/50 border border-gray-800/50 text-white font-medium rounded-xl hover:border-gray-700 transition-all">
                     Clear Search
                   </button>
-                  <button
-                    onClick={() => {
-                      setSearch("");
-                      setCategory("all");
-                    }}
-                    className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-cyan-500/20 transition-all"
-                  >
+                  <button onClick={() => { setSearch(""); setCategory("all"); }} className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-cyan-500/20 transition-all">
                     Browse All Markets
                   </button>
                 </div>
@@ -400,61 +317,38 @@ const Dashboard = () => {
             ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredPolls.map((poll) => {
-                    const isClosed = poll.closes_at
-                      ? new Date(poll.closes_at) <= new Date()
-                      : true;
-
+                  {paginatedPolls.map((poll) => {
+                    const isClosed = poll.closes_at ? new Date(poll.closes_at) <= new Date() : true;
                     const timeRemaining = formatTimeRemaining(poll.closes_at);
-
                     const marketTrend = getMarketTrend(poll);
                     const pollCategory = categories.find(c => c.id === poll.category);
 
                     return (
-
                       <div
                         key={poll.id}
                         onClick={() => navigate(`/polls/${poll.id}`)}
                         className="group cursor-pointer bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5 hover:border-cyan-500/30 hover:bg-gray-900/50 hover:shadow-xl hover:shadow-cyan-500/5 transition-all duration-300 relative overflow-hidden"
                       >
-                        {/* Hover Gradient */}
                         <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-transparent to-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-                        {/* Category Tag */}
                         {pollCategory && (
                           <div className="absolute top-3 left-3 z-10">
-                            <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${pollCategory.color?.split(" ")[0]?.replace("from-", "bg-") + "/20"
-                              }`}>
+                            <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-${pollCategory.color?.split(' ')[0]?.replace('from-', '')}/20`}>
                               <span className="text-xs">{pollCategory.icon}</span>
                               <span className="text-white/90">{pollCategory.name}</span>
                             </div>
                           </div>
                         )}
-
-                        {/* Status Badge */}
                         <div className="absolute top-3 right-3 z-10">
-                          <div className={`px-2 py-1 rounded-lg text-xs font-bold ${isClosed
-                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                            : "bg-green-500/20 text-green-400 border border-green-500/30"
-                            }`}>
+                          <div className={`px-2 py-1 rounded-lg text-xs font-bold ${
+                            isClosed ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-green-500/20 text-green-400 border border-green-500/30"
+                          }`}>
                             {isClosed ? "CLOSED" : "OPEN"}
                           </div>
                         </div>
-
                         <div className="relative z-10 pt-8">
-                          {/* Market Title */}
-                          <h3 className="font-bold text-white text-lg mb-3 line-clamp-2">
-                            {poll.title}
-                          </h3>
-
-                          {/* Description */}
-                          <p className="text-sm text-gray-400 mb-4 line-clamp-2">
-                            {poll.description || "No description provided"}
-                          </p>
-
-                          {/* Market Stats */}
+                          <h3 className="font-bold text-white text-lg mb-3 line-clamp-2">{poll.title}</h3>
+                          <p className="text-sm text-gray-400 mb-4 line-clamp-2">{poll.description || "No description provided"}</p>
                           <div className="space-y-3">
-                            {/* Volume & Options */}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-4">
                                 <div>
@@ -465,62 +359,25 @@ const Dashboard = () => {
                                 </div>
                                 <div>
                                   <div className="text-xs text-gray-500">Options</div>
-                                  <div className="text-lg font-bold text-white">
-                                    {poll.options?.length || 0}
-                                  </div>
+                                  <div className="text-lg font-bold text-white">{poll.options?.length || 0}</div>
                                 </div>
                               </div>
-
-                              {/* Market Trend */}
-                              <div className={`p-2 rounded-lg ${marketTrend === "bullish" ? "bg-green-500/10" :
-                                marketTrend === "bearish" ? "bg-red-500/10" : "bg-gray-800/50"
+                              <div className={`p-2 rounded-lg ${
+                                marketTrend === "bullish" ? "bg-green-500/10" : marketTrend === "bearish" ? "bg-red-500/10" : "bg-gray-800/50"
+                              }`}>
+                                <div className={`text-xs font-medium ${
+                                  marketTrend === "bullish" ? "text-green-400" : marketTrend === "bearish" ? "text-red-400" : "text-gray-400"
                                 }`}>
-                                <div className={`text-xs font-medium ${marketTrend === "bullish" ? "text-green-400" :
-                                  marketTrend === "bearish" ? "text-red-400" : "text-gray-400"
-                                  }`}>
-                                  {marketTrend === "bullish" ? "📈" :
-                                    marketTrend === "bearish" ? "📉" : "➡️"}
-                                  {marketTrend.toUpperCase()}
+                                  {marketTrend === "bullish" ? "📈" : marketTrend === "bearish" ? "📉" : "➡️"} {marketTrend.toUpperCase()}
                                 </div>
                               </div>
                             </div>
-
-                            {/* Time & Details */}
                             <div className="flex items-center justify-between pt-3 border-t border-gray-800/50">
                               <div className="text-xs text-gray-500">
                                 {isClosed ? "Closed" : `Closes in ${timeRemaining}`}
                               </div>
-                              <div className="text-xs text-cyan-400 font-medium">
-                                View Market →
-                              </div>
+                              <div className="text-xs text-cyan-400 font-medium">View Market →</div>
                             </div>
-
-
-                            {/* Option Prices Preview */}
-                            {/* {poll.options && poll.options.length > 0 && (
-                              <div className="pt-3 border-t border-gray-800/50">
-                                <div className="text-xs text-gray-500 mb-2">Current Prices</div>
-                                <div className="flex gap-2">
-                                  {poll.options.slice(0, 3).map((option, idx) => (
-                                    <div
-                                      key={option.id}
-                                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs font-medium ${idx === 0 ? "bg-green-500/10 text-green-400" :
-                                        idx === 1 ? "bg-red-500/10 text-red-400" :
-                                          "bg-blue-500/10 text-blue-400"
-                                        }`}
-                                    >
-                                      <div className="truncate">{option.text}</div>
-                                      <div className="font-bold">${option.price?.toFixed(3) || "0.000"}</div>
-                                    </div>
-                                  ))}
-                                  {poll.options.length > 3 && (
-                                    <div className="px-2 py-1.5 rounded-lg text-xs bg-gray-800/50 text-gray-400">
-                                      +{poll.options.length - 3}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )} */}
                           </div>
                         </div>
                       </div>
@@ -528,40 +385,73 @@ const Dashboard = () => {
                   })}
                 </div>
 
-                {/* Category Navigation (when viewing a specific category) */}
-                {category !== "all" && (
-                  <div className="mt-8">
-                    <h3 className="text-lg font-bold text-white mb-4">Explore Other Categories</h3>
-                    <div className="flex flex-wrap gap-3">
-                      {categories
-                        .filter(c => c.id !== category && c.id !== "all")
-                        .map((cat) => (
-                          <button
-                            key={cat.id}
-                            onClick={() => setCategory(cat.id)}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-900/50 border border-gray-800/50 rounded-xl text-gray-400 hover:text-white hover:border-gray-700 transition-all"
-                          >
-                            <span>{cat.icon}</span>
-                            {cat.name}
-                            <span className="ml-1 text-xs bg-gray-800/50 px-1.5 py-0.5 rounded">
-                              {categoryCounts[cat.id] || 0}
-                            </span>
-                          </button>
-                        ))}
+                {/* Pagination Controls */}
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                    <span>Show</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={handleItemsPerPageChange}
+                      className="bg-gray-900/50 border border-gray-800 rounded-lg px-2 py-1 text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    >
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                    <span>per page</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-400">
+                      Showing {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredPolls.length)} of {filteredPolls.length}
+                    </span>
+                    <div className="flex gap-1">
                       <button
-                        onClick={() => setCategory("all")}
-                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 text-cyan-400 border border-cyan-500/30 rounded-xl font-medium hover:bg-cyan-500/20 transition-all"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1 rounded-lg bg-gray-900/50 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                       >
-                        <span>🌐</span>
-                        All Categories
+                        ←
+                      </button>
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => handlePageChange(pageNum)}
+                            className={`w-8 h-8 rounded-lg text-sm font-medium transition-all ${
+                              currentPage === pageNum
+                                ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg"
+                                : "bg-gray-900/50 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700"
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1 rounded-lg bg-gray-900/50 border border-gray-800 text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                      >
+                        →
                       </button>
                     </div>
                   </div>
-                )}
+                </div>
               </>
             )}
 
-            {/* Create Market CTA */}
+            {/* Create Market CTA (unchanged) */}
             <div className="mt-12 text-center">
               <div className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-8 max-w-2xl mx-auto">
                 <div className="text-5xl mb-4">🚀</div>
@@ -583,6 +473,5 @@ const Dashboard = () => {
     </div>
   );
 };
+
 export default Dashboard;
-
-
