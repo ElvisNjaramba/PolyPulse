@@ -345,7 +345,7 @@ const PollsList = () => {
                       <div className="flex flex-wrap gap-4 mt-4 text-sm">
                         <span className="flex items-center gap-1 text-gray-300 bg-gray-700/30 px-3 py-1 rounded-full">
                           <DollarSign size={14} className="text-cyan-400" />
-                          ${poll.total_pool.toLocaleString()}
+                          KES {poll.total_pool.toLocaleString()}
                         </span>
                         <span className="flex items-center gap-1 text-gray-300 bg-gray-700/30 px-3 py-1 rounded-full">
                           <Users size={14} className="text-blue-400" />
@@ -398,7 +398,7 @@ const PollsList = () => {
                             <div className="text-sm text-gray-400">
                               Price:{" "}
                               <span className="text-cyan-400 font-mono">
-                                ${(opt.price || 0.5).toFixed(3)}
+                                KES {(opt.price || 0.5).toFixed(3)}
                               </span>
                             </div>
                           </div>

@@ -22,123 +22,121 @@ const MarketChart = ({ pollId }) => {
   const wsRef = useRef(null);
 
   // Fetch historical data on mount
-useEffect(() => {
-  if (!pollId) return;
+  useEffect(() => {
+    if (!pollId) return;
 
-  const fetchHistory = async () => {
-    try {
-      const res = await fetch(
-        `http://127.0.0.1:8000/api/polls/${pollId}/chart/`
-      );
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:8000/api/polls/${pollId}/chart/`
+        );
 
-      if (!res.ok) throw new Error("Failed response");
+        if (!res.ok) throw new Error("Failed response");
 
-      const data = await res.json();
+        const data = await res.json();
 
-      setHistoricalData(data.map(d => ({
-        timestamp: new Date(d.created_at),
-        yes_price: d.yes_price,
-        no_price: d.no_price,
-      })));
-    } catch (err) {
-      console.error("Failed to load price history", err);
-    }
-  };
+        setHistoricalData(data.map(d => ({
+          timestamp: new Date(d.created_at),
+          yes_price: d.yes_price,
+          no_price: d.no_price,
+        })));
+      } catch (err) {
+        console.error("Failed to load price history", err);
+      }
+    };
 
-  fetchHistory();
-}, [pollId]);
+    fetchHistory();
+  }, [pollId]);
 
   // WebSocket connection for live updates
-useEffect(() => {
-  if (!pollId) return;
+  useEffect(() => {
+    if (!pollId) return;
 
-  const ws = new WebSocket(
-    `ws://127.0.0.1:8000/ws/market/${pollId}/`
-  );
+    const ws = new WebSocket(
+      `ws://127.0.0.1:8000/ws/market/${pollId}/`
+    );
 
-  ws.onopen = () => console.log("WS connected");
+    ws.onopen = () => console.log("WS connected");
 
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
 
-    setHistoricalData(prev => {
-      const updated = [...prev, {
-        timestamp: new Date(data.created_at),
-        yes_price: data.yes_price,
-        no_price: data.no_price,
-      }];
+      setHistoricalData(prev => {
+        const updated = [...prev, {
+          timestamp: new Date(data.created_at),
+          yes_price: data.yes_price,
+          no_price: data.no_price,
+        }];
 
-      return updated.slice(-MAX_POINTS);
-    });
-  };
+        return updated.slice(-MAX_POINTS);
+      });
+    };
 
-  ws.onerror = (err) => console.error("WS error", err);
-  ws.onclose = () => console.log("WS closed");
+    ws.onerror = (err) => console.error("WS error", err);
+    ws.onclose = () => console.log("WS closed");
 
-  return () => ws.close();
-}, [pollId]);
+    return () => ws.close();
+  }, [pollId]);
 
   // Prepare chart data
-const chartData = {
-  datasets: [
-    {
-      label: "YES Price",
-      data: historicalData.map(d => ({
-        x: d.timestamp,
-        y: d.yes_price ?? 0,
-      })),
-      borderColor: "#00e0ff",
-      backgroundColor: "rgba(0, 224, 255, 0.1)",
-      tension: 0.2,
-      fill: false,
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-      pointBackgroundColor: "#00e0ff",
-      pointBorderColor: "#0b0f19",
-      pointBorderWidth: 2,
-    },
-    {
-      label: "NO Price",
-      data: historicalData.map(d => ({
-        x: d.timestamp,
-        y: d.no_price ?? 0,
-      })),
-      borderColor: "#ff6384",
-      backgroundColor: "rgba(255, 99, 132, 0.1)",
-      tension: 0.2,
-      fill: false,
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-      pointBackgroundColor: "#ff6384",
-      pointBorderColor: "#0b0f19",
-      pointBorderWidth: 2,
-    },
-  ],
-};
-
+  const chartData = {
+    datasets: [
+      {
+        label: "YES Price",
+        data: historicalData.map(d => ({
+          x: d.timestamp,
+          y: d.yes_price ?? 0,
+        })),
+        borderColor: "#00e0ff",
+        backgroundColor: "rgba(0, 224, 255, 0.1)",
+        tension: 0.2,
+        fill: false,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: "#00e0ff",
+        pointBorderColor: "#0b0f19",
+        pointBorderWidth: 2,
+      },
+      {
+        label: "NO Price",
+        data: historicalData.map(d => ({
+          x: d.timestamp,
+          y: d.no_price ?? 0,
+        })),
+        borderColor: "#ff6384",
+        backgroundColor: "rgba(255, 99, 132, 0.1)",
+        tension: 0.2,
+        fill: false,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointBackgroundColor: "#ff6384",
+        pointBorderColor: "#0b0f19",
+        pointBorderWidth: 2,
+      },
+    ],
+  };
 
   const options = {
     responsive: true,
     maintainAspectRatio: false,
     animation: { duration: 0 },
-scales: {
-  x: {
-    type: "time",
-    adapters: {
-      date: {}
-    },
-    time: {
-      displayFormats: {
-        second: "HH:mm:ss",
-        minute: "HH:mm",
-        hour: "MMM d HH:mm",
+    scales: {
+      x: {
+        type: "time",
+        adapters: {
+          date: {}
+        },
+        time: {
+          displayFormats: {
+            second: "HH:mm:ss",
+            minute: "HH:mm",
+            hour: "MMM d HH:mm",
+          }
+        }
       }
-    }
-  }
-},
-
+    },
     plugins: {
       tooltip: {
         mode: "index",
@@ -153,7 +151,7 @@ scales: {
         cornerRadius: 8,
         padding: 12,
         callbacks: {
-          label: (ctx) => `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(4)}`,
+          label: (ctx) => `${ctx.dataset.label}: KES ${ctx.parsed.y.toFixed(4)}`,
           title: (ctx) =>
             new Date(ctx[0].parsed.x).toLocaleTimeString([], {
               hour: "2-digit",
@@ -204,13 +202,13 @@ scales: {
             <div className="flex items-center gap-2 px-3 py-1 bg-gray-900/80 backdrop-blur-sm rounded-lg border border-gray-700/50">
               <span className="text-xs text-gray-400">YES:</span>
               <span className="text-sm font-bold text-cyan-400">
-                ${historicalData[historicalData.length - 1]?.yes_price?.toFixed(4) || "0.0000"}
+                KES {historicalData[historicalData.length - 1]?.yes_price?.toFixed(4) || "0.0000"}
               </span>
             </div>
             <div className="flex items-center gap-2 px-3 py-1 bg-gray-900/80 backdrop-blur-sm rounded-lg border border-gray-700/50">
               <span className="text-xs text-gray-400">NO:</span>
               <span className="text-sm font-bold text-rose-400">
-                ${historicalData[historicalData.length - 1]?.no_price?.toFixed(4) || "0.0000"}
+                KES {historicalData[historicalData.length - 1]?.no_price?.toFixed(4) || "0.0000"}
               </span>
             </div>
           </div>

@@ -78,7 +78,6 @@ class PollOptionSerializer(serializers.ModelSerializer):
             4
         )
 
-
     def get_pnl(self, obj):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
@@ -109,11 +108,13 @@ class PollOptionSerializer(serializers.ModelSerializer):
         # Return unique user IDs who have placed bets on this option
         return list(obj.bets.values_list("user_id", flat=True).distinct())
 
+
 class PollDetailSerializer(serializers.ModelSerializer):
     options = PollOptionSerializer(many=True)
     can_accept_bets = serializers.SerializerMethodField()
     total_pool = serializers.SerializerMethodField()
     all_user_ids = serializers.SerializerMethodField()
+    creator = serializers.CharField(source='creator.username', read_only=True)
 
     # 🔥 NEW FIELDS
     yes_shares = serializers.SerializerMethodField()
@@ -139,7 +140,8 @@ class PollDetailSerializer(serializers.ModelSerializer):
             "no_percentage",
             "options",
             "all_user_ids",
-            "category",     
+            "category",   
+            'creator',  
             "created_at",
         ]
 
@@ -155,9 +157,6 @@ class PollDetailSerializer(serializers.ModelSerializer):
         no_value = market.no_shares * market.price_no()
 
         return round(yes_value + no_value, 2)
-
-
-
 
     def get_all_user_ids(self, obj):
         all_ids = set()
@@ -189,6 +188,7 @@ class PollDetailSerializer(serializers.ModelSerializer):
             return 50
         return round((market.no_shares / total) * 100, 2)
 
+
 class PollCreateSerializer(serializers.ModelSerializer):
     category = serializers.SlugRelatedField(
         queryset=PollCategory.objects.all(),
@@ -216,7 +216,6 @@ class PollCreateSerializer(serializers.ModelSerializer):
             )
         return value
 
-
     def create(self, validated_data):
         options_data = validated_data.pop("options")
         user = self.context["request"].user
@@ -234,6 +233,7 @@ class PollCreateSerializer(serializers.ModelSerializer):
 
         return poll
 
+
 class PollOptionReadSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
     
@@ -249,7 +249,6 @@ class PollOptionReadSerializer(serializers.ModelSerializer):
             return market.price_no()
         except (Market.DoesNotExist, AttributeError):
             return 0.5  
-
 
 class PollListSerializer(serializers.ModelSerializer):
     creator = serializers.StringRelatedField()
@@ -292,6 +291,7 @@ class PollListSerializer(serializers.ModelSerializer):
             all_ids.update(option.bets.values_list("user_id", flat=True))
         return list(all_ids)
 
+
 class BetCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bet
@@ -304,7 +304,6 @@ class BetCreateSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         profile = user.profile
         market = poll.market
-        price = market.price_yes() if option == poll.options.first() else market.price_no()
 
         if amount > market.liquidity_b * 2:
             raise serializers.ValidationError(
@@ -313,6 +312,23 @@ class BetCreateSerializer(serializers.ModelSerializer):
 
         if option.poll_id != poll.id:
             raise serializers.ValidationError("Invalid option for this poll.")
+
+        # ✅ ONE-SIDE RULE: prevent betting on both YES and NO in the same poll
+        is_yes = option.is_yes()
+        opposite_option = poll.options.exclude(id=option.id).first()
+        if opposite_option:
+            has_opposite_bet = Bet.objects.filter(
+                user=user,
+                poll=poll,
+                option=opposite_option,
+            ).exists()
+            if has_opposite_bet:
+                side = "YES" if is_yes else "NO"
+                raise serializers.ValidationError(
+                    f"You already have a position on the other side of this market. "
+                    f"You cannot bet {side} after already betting {'NO' if is_yes else 'YES'}. "
+                    f"Sell your existing shares first."
+                )
 
         if poll.is_free:
             data["amount"] = 1.0
@@ -327,12 +343,8 @@ class BetCreateSerializer(serializers.ModelSerializer):
                     "Insufficient balance."
                 )
 
-        if Bet.objects.filter(user=user, poll=poll).exists():
-            raise serializers.ValidationError(
-                "You have already placed a bet on this poll."
-            )
-
         return data
+
 
 class PollOptionDetailSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
@@ -348,8 +360,6 @@ class PollOptionDetailSerializer(serializers.ModelSerializer):
             market.price_yes() if is_yes else market.price_no(),
             4
         )
-
-# base/serializers.py
 
 class MarketOptionSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
@@ -388,6 +398,7 @@ class MarketOptionSerializer(serializers.ModelSerializer):
             else position.no_shares
         )
 
+
 class PollResolveSerializer(serializers.Serializer):
     winning_option_id = serializers.IntegerField()
 
@@ -408,6 +419,7 @@ class PollResolveSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid option.")
 
         return data
+
 
 class RecursiveCommentSerializer(serializers.Serializer):
     def to_representation(self, value):
@@ -439,6 +451,7 @@ class CommentSerializer(serializers.ModelSerializer):
             return False
         return obj.likes.filter(user=user).exists()
 
+
 class NotificationSerializer(serializers.ModelSerializer):
     actor = serializers.CharField(source="actor.username", read_only=True)
 
@@ -468,7 +481,6 @@ class PollCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = PollCategory
         fields = ['id', 'name', 'slug']
-
 
 
 class ChallengeSerializer(serializers.ModelSerializer):

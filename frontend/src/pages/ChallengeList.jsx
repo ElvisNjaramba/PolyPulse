@@ -148,7 +148,7 @@ const ChallengeList = () => {
                     </div>
                     <h3 className="text-white font-medium text-lg mb-1">{challenge.question}</h3>
                     <p className="text-gray-400">
-                      {challenge.creator_username} ({challenge.creator_choice_display}) vs {challenge.opponent_username} ({challenge.opponent_choice}) · ${challenge.amount}
+                      {challenge.creator_username} ({challenge.creator_choice_display}) vs {challenge.opponent_username} ({challenge.opponent_choice}) · Kes {challenge.amount}
                     </p>
                   </div>
                   <div className="flex gap-2">

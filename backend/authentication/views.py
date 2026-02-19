@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 
 from authentication.permissions import IsActiveSession
-from .serializers import EmailVerifiedTokenSerializer, RegisterSerializer, ProfileSerializer
+from .serializers import EmailVerifiedTokenSerializer, ProfileUpdateSerializer, RegisterSerializer, ProfileSerializer
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -44,8 +44,24 @@ class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
         profile = request.user.profile
-        serializer = ProfileSerializer(profile)
+        serializer = ProfileSerializer(profile, context={'request': request}) 
         return Response(serializer.data)
+    
+from rest_framework.parsers import MultiPartParser, FormParser
+
+class ProfileUpdateView(APIView):
+    authentication_classes = [SingleSessionJWTAuthentication, VerifiedJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def patch(self, request):
+        profile = request.user.profile
+        serializer = ProfileUpdateSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            # 👇 return full profile with absolute avatar URL
+            return Response(ProfileSerializer(profile, context={'request': request}).data)
+        return Response(serializer.errors, status=400)
     
 class VerifyEmailView(APIView):
     permission_classes = []

@@ -117,13 +117,13 @@ const Positions = () => {
             <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5">
               <p className="text-sm text-gray-400 mb-1">Total Invested</p>
               <p className="text-2xl font-bold text-white">
-                ${totalInvested.toFixed(2)}
+                Kes {totalInvested.toFixed(2)}
               </p>
             </div>
             <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5">
               <p className="text-sm text-gray-400 mb-1">Current Value</p>
               <p className="text-2xl font-bold text-white">
-                ${totalValue.toFixed(2)}
+                Kes {totalValue.toFixed(2)}
               </p>
             </div>
             <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-5">
@@ -133,7 +133,7 @@ const Positions = () => {
                   totalPnL >= 0 ? "text-green-400" : "text-red-400"
                 }`}
               >
-                {totalPnL >= 0 ? "+" : ""}${totalPnL.toFixed(2)}
+                {totalPnL >= 0 ? "+" : ""}Kes {totalPnL.toFixed(2)}
               </p>
             </div>
           </div>
@@ -215,16 +215,16 @@ const Positions = () => {
                         <div className="grid grid-cols-3 gap-6 md:gap-8">
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Avg Price</p>
-                            <p className="text-white font-mono">${pos.avg_price.toFixed(4)}</p>
+                            <p className="text-white font-mono">Kes {pos.avg_price.toFixed(4)}</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500 mb-1">Current</p>
-                            <p className="text-white font-mono">${pos.current_price.toFixed(4)}</p>
+                            <p className="text-white font-mono">Kes {pos.current_price.toFixed(4)}</p>
                           </div>
                           <div>
                             <p className="text-xs text-gray-500 mb-1">P&L</p>
                             <p className={`font-mono font-medium ${pnlClass}`}>
-                              {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
+                              {pnl >= 0 ? "+" : ""}Kes {pnl.toFixed(2)}
                             </p>
                           </div>
                         </div>

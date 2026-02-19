@@ -85,7 +85,7 @@ const ChallengeCreate = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Bet Amount ($) *</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Bet Amount (Kes) *</label>
                 <input
                   type="number"
                   name="amount"

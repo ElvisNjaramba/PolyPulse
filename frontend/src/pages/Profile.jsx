@@ -29,6 +29,10 @@ const Profile = () => {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
 
+  // Avatar upload state
+  const [uploading, setUploading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+
   // Pagination for trades table
   const [tradesPage, setTradesPage] = useState(1);
   const [tradesPerPage, setTradesPerPage] = useState(10);
@@ -46,6 +50,9 @@ const Profile = () => {
           api.get("/positions/")
         ]);
         setProfile(profileRes.data);
+        if (profileRes.data.avatar) {
+          setAvatarPreview(profileRes.data.avatar);
+        }
         setPositions(positionsRes.data);
       } catch (error) {
         console.error("Failed to load profile data:", error);
@@ -56,6 +63,41 @@ const Profile = () => {
     
     loadData();
   }, []);
+
+  // Avatar upload handler
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Preview immediately
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    try {
+      const res = await api.patch('/auth/profile/update/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      // Update profile with new avatar URL from server
+      setProfile(prev => ({ ...prev, avatar: res.data.avatar }));
+      // If the server returns a different URL, we might want to use that
+      // For now, keep preview (or replace with server URL)
+      if (res.data.avatar) {
+        setAvatarPreview(res.data.avatar);
+      }
+    } catch (err) {
+      console.error('Avatar upload failed', err);
+      // Rollback preview on error
+      setAvatarPreview(profile?.avatar || null);
+    } finally {
+      setUploading(false);
+      // Clean up object URL after upload (important)
+      URL.revokeObjectURL(previewUrl);
+    }
+  };
 
   // Derived stats from positions
   const totalTrades = positions.length;
@@ -69,8 +111,8 @@ const Profile = () => {
   const activityLog = [
     { id: 1, type: "login", description: "Logged in from Chrome on Windows", timestamp: "2024-01-15T10:30:00Z" },
     { id: 2, type: "trade", description: "Placed a YES bet on 'Bitcoin $100K'", timestamp: "2024-01-14T14:20:00Z" },
-    { id: 3, type: "withdrawal", description: "Withdrew $500 to bank account", timestamp: "2024-01-12T09:15:00Z" },
-    { id: 4, type: "deposit", description: "Deposited $1000 via credit card", timestamp: "2024-01-10T18:45:00Z" },
+    { id: 3, type: "withdrawal", description: "Withdrew Kes 500 to bank account", timestamp: "2024-01-12T09:15:00Z" },
+    { id: 4, type: "deposit", description: "Deposited Kes 1000 via credit card", timestamp: "2024-01-10T18:45:00Z" },
     { id: 5, type: "security", description: "Changed password", timestamp: "2024-01-05T22:10:00Z" },
     { id: 6, type: "login", description: "Logged in from Safari on iPhone", timestamp: "2024-01-03T08:05:00Z" },
   ];
@@ -98,7 +140,7 @@ const Profile = () => {
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'KES',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(value);
@@ -119,7 +161,7 @@ const Profile = () => {
   const achievements = [
     { id: 1, title: "First Trade", icon: "🥇", description: "Placed your first prediction", unlocked: totalTrades > 0 },
     { id: 2, title: "Market Maker", icon: "🏆", description: "Created 5+ prediction markets", unlocked: false },
-    { id: 3, title: "Big Spender", icon: "💰", description: "Traded over $1,000 total", unlocked: Math.abs(totalPnL) > 1000 },
+    { id: 3, title: "Big Spender", icon: "💰", description: "Traded over Kes 1,000 total", unlocked: Math.abs(totalPnL) > 1000 },
     { id: 4, title: "Perfect Predictor", icon: "🎯", description: "10 consecutive winning trades", unlocked: false },
   ];
 
@@ -183,15 +225,39 @@ const Profile = () => {
           {/* Left Column - Profile Card */}
           <div className="lg:col-span-1">
             <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-6 sticky top-6">
-              {/* Profile Header */}
+              {/* Profile Header with Avatar Upload */}
               <div className="flex flex-col items-center mb-6">
-                <div className="relative mb-4">
-                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-3xl font-bold text-white">
-                    {profile?.username?.charAt(0).toUpperCase()}
+                <div className="relative mb-4 group">
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center overflow-hidden">
+                    {avatarPreview ? (
+                      <img 
+                        src={avatarPreview} 
+                        alt="avatar" 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-3xl font-bold text-white">
+                        {profile?.username?.charAt(0).toUpperCase()}
+                      </span>
+                    )}
                   </div>
-                  <button className="absolute bottom-0 right-0 w-8 h-8 bg-gray-900 border border-gray-800 rounded-full flex items-center justify-center hover:bg-gray-800 transition-all">
-                    <Edit size={14} className="text-gray-400" />
-                  </button>
+                  <label 
+                    htmlFor="avatar-upload" 
+                    className="absolute bottom-0 right-0 w-8 h-8 bg-gray-900 border border-gray-800 rounded-full flex items-center justify-center hover:bg-gray-800 transition-all cursor-pointer"
+                  >
+                    {uploading ? (
+                      <div className="w-4 h-4 border-2 border-gray-400 border-t-cyan-400 rounded-full animate-spin" />
+                    ) : (
+                      <Edit size={14} className="text-gray-400" />
+                    )}
+                  </label>
+                  <input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                  />
                 </div>
                 
                 <h2 className="text-2xl font-bold text-white mb-1">{profile?.username}</h2>
@@ -248,7 +314,7 @@ const Profile = () => {
                     <DollarSign size={16} className="text-yellow-400" />
                     <span className="text-sm text-gray-300">Total P/L</span>
                   </div>
-                  <span className={`font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  <span className={`font-bold Kes {totalPnL >= 0 ? 'text-white-400' : 'text-red-400'}`}>
                     {totalPnL >= 0 ? '+' : ''}{formatCurrency(totalPnL)}
                   </span>
                 </div>
@@ -316,7 +382,7 @@ const Profile = () => {
                           <div>
                             <div className="font-medium text-white">{trade.poll_title}</div>
                             <div className="text-sm text-gray-400">
-                              {trade.option} • {trade.shares.toFixed(2)} shares @ ${trade.avg_price.toFixed(3)}
+                              {trade.option} • {trade.shares.toFixed(2)} shares @ Kes {trade.avg_price.toFixed(3)}
                             </div>
                           </div>
                           <div className={`font-bold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -375,10 +441,10 @@ const Profile = () => {
                               {trade.shares.toFixed(2)}
                             </td>
                             <td className="py-3 px-4 text-white">
-                              ${trade.avg_price.toFixed(3)}
+                            Kes {trade.avg_price.toFixed(3)}
                             </td>
                             <td className="py-3 px-4 text-white">
-                              ${trade.current_price.toFixed(3)}
+                              Kes {trade.current_price.toFixed(3)}
                             </td>
                             <td className="py-3 px-4">
                               <span className={`font-bold ${trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>

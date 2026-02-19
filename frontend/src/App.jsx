@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -28,6 +29,23 @@ import ChallengeList from "./pages/ChallengeList";
 import ChallengeCreate from "./pages/ChallengeCreate";
 
 import Landing from "./pages/LandingPage";
+import PollAdminPanel from "./pages/PollAdminPanel";
+
+// Component to handle root route based on auth
+const RootRedirect = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) return null; // or a spinner
+
+  return user ? <Navigate to="/dashboard" replace /> : <Landing />;
+};
+
+// Redirect authenticated users away from login/register
+const AuthRedirect = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  return user ? <Navigate to="/dashboard" replace /> : children;
+};
 
 function App() {
   return (
@@ -35,10 +53,24 @@ function App() {
       <AuthProvider>
         <Routes>
 
-          {/* 🌍 Public */}
-          <Route path="/"element={<Landing />}/>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          {/* 🌍 Public with auth-aware redirects */}
+          <Route path="/" element={<RootRedirect />} />
+          <Route
+            path="/login"
+            element={
+              <AuthRedirect>
+                <Login />
+              </AuthRedirect>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <AuthRedirect>
+                <Register />
+              </AuthRedirect>
+            }
+          />
           <Route path="/check-email" element={<CheckEmail />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
 
@@ -50,43 +82,17 @@ function App() {
               </PrivateRoute>
             }
           >
-            
             <Route path="/dashboard" element={<Dashboard />} />
-
             <Route path="/polls/:id" element={<PollDetail />} />
             <Route path="/polls" element={<PollsList />} />
             <Route path="/create/poll" element={<CreatePoll />} />
-            <Route path="/manage/polls" element={<ManagePolls />} />
+            <Route path="/manage/polls" element={<PollAdminPanel />} />
             <Route path="/positions" element={<Positions />} />
             <Route path="/challenges" element={<ChallengeList />} />
             <Route path="/challenges/new" element={<ChallengeCreate />} />
-            <Route
-              path="/wallet"
-              element={
-                <PrivateRoute>
-                  <Wallet />
-                </PrivateRoute>
-              }
-            />
-
-            <Route
-              path="/profile"
-              element={
-                <PrivateRoute>
-                  <Profile />
-                </PrivateRoute>
-              }
-            />
-
-            <Route
-              path="/notifications"
-              element={
-                <PrivateRoute>
-                  <Notifications />
-                </PrivateRoute>
-              }
-            />
-
+            <Route path="/wallet" element={<Wallet />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/notifications" element={<Notifications />} />
           </Route>
 
           {/* 🛠 Admin Dashboard */}
@@ -107,7 +113,6 @@ function App() {
 
           {/* ❌ Catch-all */}
           <Route path="*" element={<Navigate to="/" />} />
-
         </Routes>
       </AuthProvider>
     </BrowserRouter>

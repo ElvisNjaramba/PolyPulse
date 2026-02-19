@@ -144,12 +144,12 @@ const Wallet = () => {
             <div className="flex items-center gap-3 bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
               <div className="text-center">
                 <div className="text-sm text-gray-400">Current Balance</div>
-                <div className="text-2xl font-bold text-white">${currentBalance.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-white">Kes {currentBalance.toFixed(2)}</div>
               </div>
               <div className="h-12 w-px bg-gray-800" />
               <div className="text-center">
                 <div className="text-sm text-green-400">Total Profit</div>
-                <div className="text-lg font-semibold text-white">${totalProfit.toFixed(2)}</div>
+                <div className="text-lg font-semibold text-white">Kes {totalProfit.toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -200,13 +200,13 @@ const Wallet = () => {
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
               <div className="text-sm text-gray-400 mb-1">💰 Net Profit</div>
               <div className={`text-2xl font-bold ${totalProfit - totalCost >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                ${(totalProfit - totalCost).toFixed(2)}
+                Kes {(totalProfit - totalCost).toFixed(2)}
               </div>
               <div className="text-xs text-gray-500 mt-1">Credits - Debits</div>
             </div>
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
               <div className="text-sm text-gray-400 mb-1">🎲 Avg Bet Size</div>
-              <div className="text-2xl font-bold text-white">${avgBetSize}</div>
+              <div className="text-2xl font-bold text-white">Kes {avgBetSize}</div>
               <div className="text-xs text-gray-500 mt-1">Per wager</div>
             </div>
             <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
@@ -296,12 +296,12 @@ const Wallet = () => {
                             <div className={`text-2xl font-bold ${
                               isCredit ? "text-green-400" : "text-red-400"
                             }`}>
-                              {isCredit ? "+" : "-"}${Math.abs(Number(tx.amount)).toFixed(2)}
+                              {isCredit ? "+" : "-"}Kes {Math.abs(Number(tx.amount)).toFixed(2)}
                             </div>
                             
                             <div className="flex items-center justify-end gap-4 mt-2 text-sm">
                               <div className="text-gray-500">
-                                Balance: <span className="text-white font-medium">${Number(tx.balance_after).toFixed(2)}</span>
+                                Balance: <span className="text-white font-medium">Kes {Number(tx.balance_after).toFixed(2)}</span>
                               </div>
                               
                               <div className={`px-2 py-1 rounded-lg text-xs font-medium ${

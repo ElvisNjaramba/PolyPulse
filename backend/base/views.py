@@ -61,6 +61,7 @@ class PollListView(generics.ListAPIView):
         category = self.request.query_params.get("category")
         status_filter = self.request.query_params.get("status")
         is_free = self.request.query_params.get("is_free")
+        creator = self.request.query_params.get('creator')
 
         if category:
             queryset = queryset.filter(category__slug=category)
@@ -74,6 +75,13 @@ class PollListView(generics.ListAPIView):
             queryset = queryset.filter(is_free=True)
         elif is_free == "false":
             queryset = queryset.filter(is_free=False)
+
+        if creator:
+            if creator == 'me' and self.request.user.is_authenticated:
+                queryset = queryset.filter(creator=self.request.user)
+            else:
+                # assume numeric ID passed
+                queryset = queryset.filter(creator_id=creator)
 
         return queryset.order_by("-created_at")
 
@@ -93,13 +101,6 @@ class PollDetailView(generics.RetrieveAPIView):
 
     def get_object(self):
         poll = super().get_object()
-
-        # 🔥 Ensure market exists
-        # Market.objects.get_or_create(
-        #     poll=poll,
-        #     defaults={"liquidity_b": 100.0}
-        # )
-
         poll.close_if_expired()
         return poll
 
@@ -141,18 +142,17 @@ class PollResolveView(APIView):
                 description="Market resolution payout"
             )
 
-            # ✅ Notification for each winner
             Notification.objects.create(
                 user=bet.user,
-                actor=None,  # could be poll.creator if you want
+                actor=None,
                 notification_type='bet_won',
-                message=f'You won ${payout} on "{poll.title}"'
+                message=f'You won Kes {payout} on "{poll.title}"'
             )
 
         return Response({"message": "Poll resolved successfully"})
 
 class PollSuspendView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsCreatorOrAdmin]
 
     @transaction.atomic
     def post(self, request, poll_id):
@@ -176,6 +176,32 @@ class PollSuspendView(APIView):
             profile.save()
 
         return Response({"message": "Poll suspended and bets refunded"})
+
+class PollCancelView(APIView):
+    permission_classes = [IsCreatorOrAdmin]   # allows creator or admin
+
+    @transaction.atomic
+    def post(self, request, poll_id):
+        poll = Poll.objects.select_for_update().get(id=poll_id)
+        self.check_object_permissions(request, poll)
+
+        if poll.status in ["resolved", "suspended", "cancelled"]:
+            return Response(
+                {"error": "Poll cannot be cancelled."},
+                status=400
+            )
+
+        poll.status = "cancelled"
+        poll.save()
+
+        # Refund all bets (optional – remove if you don't want refund)
+        bets = Bet.objects.filter(poll=poll).select_related("user__profile")
+        for bet in bets:
+            profile = bet.user.profile
+            profile.balance += bet.amount
+            profile.save()
+
+        return Response({"message": "Poll cancelled and bets refunded"})
 
 class LeaderboardView(APIView):
     def get(self, request):
@@ -308,7 +334,7 @@ class PlaceBetView(APIView):
         )
         serializer.is_valid(raise_exception=True)
 
-        poll = serializer.validated_data["poll"]
+        poll   = serializer.validated_data["poll"]
         option = serializer.validated_data["option"]
         amount = serializer.validated_data["amount"]
 
@@ -321,7 +347,7 @@ class PlaceBetView(APIView):
 
         is_yes = option.is_yes()
 
-        # 💸 Debit wallet
+        # 💸 Debit wallet BEFORE trade so balance is always consistent
         apply_wallet_transaction(
             user=request.user,
             amount=-amount,
@@ -330,6 +356,7 @@ class PlaceBetView(APIView):
             description="Market buy"
         )
 
+        # buy() now returns (shares_issued, current_price) correctly
         shares, price = market.buy(is_yes, amount)
 
         Bet.objects.create(
@@ -337,29 +364,27 @@ class PlaceBetView(APIView):
             poll=poll,
             option=option,
             amount=amount,
-            shares=shares
+            shares=shares,
         )
 
+        # Update position — shares and spent tracked separately
         if is_yes:
             position.yes_shares += shares
-            position.yes_spent += amount
+            position.yes_spent  += amount
         else:
             position.no_shares += shares
-            position.no_spent += amount
+            position.no_spent  += amount
 
         position.save()
 
         return Response({
-            "shares": round(shares, 4),
-            "price": round(price, 4),
+            "shares":    round(shares, 4),
+            "price":     round(price, 4),
             "new_price": round(
-                market.price_yes() if is_yes else market.price_no(),
-                4
+                market.price_yes() if is_yes else market.price_no(), 4
             ),
         })
 
-import logging
-logger = logging.getLogger(__name__)
 class SellSharesView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -368,27 +393,24 @@ class SellSharesView(APIView):
         option = PollOption.objects.get(id=request.data["option_id"])
         shares = float(request.data["shares"])
 
-        market = Market.objects.select_for_update().get(poll_id=poll_id)
+        market   = Market.objects.select_for_update().get(poll_id=poll_id)
         position = MarketPosition.objects.select_for_update().get(
             user=request.user, market=market
         )
 
         is_yes = option.is_yes()
-        owned = position.yes_shares if is_yes else position.no_shares
+        owned  = position.yes_shares if is_yes else position.no_shares
 
         if shares <= 0 or shares > owned:
             return Response(
-                {"detail": f"Not enough shares. You own {owned}"},
+                {"detail": f"Invalid share amount. You own {owned:.4f} shares."},
                 status=400
             )
 
-        payout = market.sell(is_yes, shares)
-
-        if isinstance(payout, dict):
-            payout_value = float(payout.get("refund", 0))
-        else:
-            payout_value = float(payout)
-
+        result = market.sell(is_yes, shares)
+        # ✅ Full LMSR refund — market.sell() already computes the correct payout.
+        # No deductions applied; user receives the complete market value of their shares.
+        payout_value = float(result["refund"])
 
         if payout_value <= 0:
             return Response(
@@ -396,7 +418,6 @@ class SellSharesView(APIView):
                 status=400
             )
 
-        # Credit wallet
         apply_wallet_transaction(
             user=request.user,
             amount=payout_value,
@@ -405,25 +426,24 @@ class SellSharesView(APIView):
             description="Market sell"
         )
 
-        # Reduce shares
+        # ✅ Reduce position — clamp spent to 0 to avoid float drift going negative
         if is_yes:
             avg_price = position.avg_yes_price()
             position.yes_shares -= shares
-            position.yes_spent -= shares * avg_price
+            position.yes_spent   = max(0, position.yes_spent - shares * avg_price)
         else:
             avg_price = position.avg_no_price()
             position.no_shares -= shares
-            position.no_spent -= shares * avg_price
+            position.no_spent   = max(0, position.no_spent - shares * avg_price)
 
         position.save()
 
         return Response({
-            "payout": round(payout_value, 4),
+            "payout":    round(payout_value, 4),
             "new_price": round(
                 market.price_yes() if is_yes else market.price_no(), 4
             ),
         })
-
 
 from rest_framework.decorators import api_view, permission_classes
 @api_view(["GET"])
@@ -470,7 +490,7 @@ def user_positions(request):
             "avg_price": round(avg_price, 4),
             "current_price": round(current_price, 4),
             "pnl": round(pnl, 2),
-            "status": b["poll__status"],  # add status for grouping
+            "status": b["poll__status"],
         })
 
     return Response(data)
@@ -493,10 +513,9 @@ def profile_view(request):
     return Response({
         "username": user.username,
         "email": user.email,
-        "balance": user.wallet.balance,
-        "open_positions": open_positions,  # ✅ THIS IS THE KEY
+        "balance": user.profile.balance,
+        "open_positions": open_positions,
     })
-
 
 class MarketPriceHistoryView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -521,12 +540,11 @@ def poll_stats(request):
         "total_polls": total_polls,
         "active_traders": active_traders,
     })
+
 class PollCategoryListView(ListAPIView):
     queryset = PollCategory.objects.all()
     serializer_class = PollCategorySerializer
     permission_classes = [permissions.AllowAny]
-
-
 
 from .models import Challenge
 from .serializers import ChallengeSerializer, ChallengeCreateSerializer
@@ -571,16 +589,13 @@ class ChallengeAcceptView(APIView):
             challenge.save()
             return Response({'error': 'Challenge expired'}, status=400)
 
-        # Convert Decimal to float for arithmetic
         amount_float = float(challenge.amount)
 
-        # Check balances (assuming balance is a float)
         creator_balance = challenge.creator.profile.balance
         opponent_balance = request.user.profile.balance
         if creator_balance < amount_float or opponent_balance < amount_float:
             return Response({'error': 'Insufficient balance'}, status=400)
 
-        # Deduct funds
         challenge.creator.profile.balance -= amount_float
         challenge.creator.profile.save()
         request.user.profile.balance -= amount_float
@@ -592,7 +607,7 @@ class ChallengeAcceptView(APIView):
         Notification.objects.create(
             user=challenge.creator,
             actor=request.user,
-            notification_type='challenge_accepted',  # you may need to add this to NOTIFICATION_TYPES
+            notification_type='challenge_accepted',
             message=f'{request.user.username} accepted your challenge: {challenge.question}'
         )
         return Response({'message': 'Challenge accepted'})
@@ -613,7 +628,6 @@ class ChallengeResolveView(APIView):
         if winning_outcome not in ['yes', 'no']:
             return Response({'error': 'Invalid outcome'}, status=400)
 
-        # Determine winner
         if challenge.creator_choice == winning_outcome:
             winner = challenge.creator
         else:
@@ -621,7 +635,6 @@ class ChallengeResolveView(APIView):
 
         payout = float(challenge.amount) * 2
 
-        # Credit winner
         winner.profile.balance += payout
         winner.profile.save()
 
@@ -629,15 +642,13 @@ class ChallengeResolveView(APIView):
         challenge.winner = winner
         challenge.save()
 
-        # Notify winner
         Notification.objects.create(
             user=winner,
             actor=None,
             notification_type='challenge_won',
-            message=f'You won the challenge "{challenge.question}" and received ${payout}'
+            message=f'You won the challenge "{challenge.question}" and received Kes {payout}'
         )
 
-        # Notify loser
         loser = challenge.opponent if winner == challenge.creator else challenge.creator
         Notification.objects.create(
             user=loser,
@@ -676,6 +687,3 @@ class ChallengeCancelView(APIView):
                 message=f'{request.user.username} cancelled the challenge "{challenge.question}" – funds refunded'
             )
         return Response({'message': 'Challenge cancelled'})
-    
-
-

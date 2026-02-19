@@ -21,6 +21,7 @@ class Profile(models.Model):
 
     polls_created_today = models.IntegerField(default=0)
     last_poll_created_date = models.DateField(null=True, blank=True)
+    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
 
     email_verified = models.BooleanField(default=False)
     email_verification_token = models.UUIDField(null=True, blank=True)

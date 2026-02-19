@@ -2,7 +2,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 # from authentication.serializers import SessionAwareTokenRefreshSerializer
-from .views import AuthViewSet, ProfileView, VerifyEmailView
+from .views import AuthViewSet, ProfileUpdateView, ProfileView, VerifyEmailView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 router = DefaultRouter()
@@ -14,6 +14,7 @@ urlpatterns = [
     # path("refresh/", PublicTokenRefreshView.as_view(), name="token_refresh"),
     path("profile/", ProfileView.as_view()),
     path("verify-email/<uuid:token>/", VerifyEmailView.as_view(), name="verify-email"),
+    path('profile/update/', ProfileUpdateView.as_view(), name='profile-update'),
 
 ]
 

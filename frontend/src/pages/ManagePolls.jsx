@@ -228,7 +228,7 @@ const ManagePolls = () => {
                       <div className="flex flex-wrap gap-6 text-sm">
                         <div className="flex items-center gap-2 text-gray-400">
                           <DollarSign size={16} />
-                          <span className="font-semibold text-white">${poll.total_pool || 0}</span>
+                          <span className="font-semibold text-white">Kes {poll.total_pool || 0}</span>
                           <span className="text-gray-500">volume</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-400">
@@ -315,7 +315,7 @@ const ManagePolls = () => {
             <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
               <div className="text-sm text-gray-400 mb-1">Total Volume</div>
               <div className="text-2xl font-bold text-cyan-400">
-                ${polls.reduce((sum, p) => sum + (p.total_pool || 0), 0).toFixed(0)}
+                Kes {polls.reduce((sum, p) => sum + (p.total_pool || 0), 0).toFixed(0)}
               </div>
             </div>
             

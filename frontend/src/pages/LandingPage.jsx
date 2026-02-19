@@ -38,7 +38,7 @@ const Landing = () => {
     },
     {
       icon: <Users className="w-6 h-6 text-blue-400" />,
-      title: "Head‑to‑Head Challenges",
+      title: "Duel Challenges",
       description:
         "Challenge friends or other traders directly. Set your own terms and stakes.",
     },
@@ -57,9 +57,9 @@ const Landing = () => {
   ];
 
   const stats = [
-    { label: "Active Markets", value: "150+" },
-    { label: "Total Traders", value: "12.5k" },
-    { label: "Volume Traded", value: "$4.2M" },
+    { label: "Active Markets", value: "100+" },
+    { label: "Total Traders", value: "500+" },
+    { label: "Volume Traded", value: "kes 100k+" },
     { label: "Avg. Win Rate", value: "72%" },
   ];
 

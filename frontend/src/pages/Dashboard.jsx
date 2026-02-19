@@ -1,7 +1,14 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchPolls } from "../api/polls";
-import axios from "axios";
+
+// Status badge styles
+const STATUS_STYLES = {
+  open:      "bg-green-500/20 text-green-400 border border-green-500/30",
+  closed:    "bg-red-500/20 text-red-400 border border-red-500/30",
+  resolved:  "bg-blue-500/20 text-blue-400 border border-blue-500/30",
+  suspended: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30",
+};
 
 const Dashboard = () => {
   const [polls, setPolls] = useState([]);
@@ -13,7 +20,6 @@ const Dashboard = () => {
     totalMarkets: 0,
     activeMarkets: 0,
     totalVolume: 0,
-    new_polls_today: 0,
   });
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -21,13 +27,23 @@ const Dashboard = () => {
 
   const navigate = useNavigate();
 
+  // Fetch polls and refresh every 30 seconds
   useEffect(() => {
-    fetchPolls()
-      .then((res) => {
+    const fetchData = async () => {
+      try {
+        const res = await fetchPolls();
         setPolls(res.data);
         calculateStats(res.data);
-      })
-      .finally(() => setLoading(false));
+      } catch (err) {
+        console.error("Failed to fetch polls:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 30000); // refresh every 30s
+    return () => clearInterval(interval);
   }, []);
 
   const calculateStats = (pollsData) => {
@@ -104,13 +120,8 @@ const Dashboard = () => {
   // Filtered polls based on search, filter, category
   const filteredPolls = useMemo(() => {
     return polls.filter(poll => {
-      const isClosed = poll.closes_at
-        ? new Date(poll.closes_at) <= new Date()
-        : true;
-
-      if (filter === "open" && isClosed) return false;
-      if (filter === "closed" && !isClosed) return false;
-      if (filter === "high-volume" && Number(poll.total_pool || 0) <= 1000) return false;
+      // Use actual status from API
+      if (filter !== "all" && poll.status !== filter) return false;
       if (category !== "all" && poll.category !== category) return false;
 
       if (
@@ -151,14 +162,14 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
-      {/* Background Effects (same) */}
+      {/* Background Effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
       </div>
 
       <div className="max-w-7xl mx-auto relative z-10">
-        {/* Header with stats (unchanged) */}
+        {/* Header with stats */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
             <div>
@@ -178,12 +189,12 @@ const Dashboard = () => {
               </div>
               <div className="bg-gray-900/50 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-4">
                 <div className="text-sm text-gray-400 mb-1">Gross Volume</div>
-                <div className="text-2xl font-bold text-cyan-400">${stats.totalVolume.toFixed(0)}</div>
+                <div className="text-2xl font-bold text-cyan-400">KES {stats.totalVolume.toFixed(0)}</div>
               </div>
             </div>
           </div>
 
-          {/* Category Selection - Improved with scroll and count badges */}
+          {/* Category Selection */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -225,7 +236,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Search and Filters (unchanged) */}
+          {/* Search and Filters */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="flex-1">
               <div className="relative">
@@ -242,17 +253,17 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-2 categories-scrollbar">
-              {["all", "open", "closed"].map((filterType) => (
+              {["all", "open", "closed", "resolved", "suspended"].map((filterType) => (
                 <button
                   key={filterType}
                   onClick={() => setFilter(filterType)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap capitalize transition-all ${
                     filter === filterType
                       ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/20"
                       : "bg-gray-900/50 text-gray-400 hover:bg-gray-800/50 hover:text-white border border-gray-800/50"
                   }`}
                 >
-                  {filterType === 'all' ? 'All' : filterType === 'open' ? 'Open' : 'Closed'}
+                  {filterType}
                 </button>
               ))}
             </div>
@@ -267,7 +278,7 @@ const Dashboard = () => {
           </div>
         ) : (
           <>
-            {/* Category Header (unchanged) */}
+            {/* Category Header */}
             {category !== "all" && selectedCategory && (
               <div className="mb-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -280,7 +291,7 @@ const Dashboard = () => {
                         {selectedCategory.name}
                       </h2>
                       <p className="text-gray-400">
-                        {filteredPolls.length} {filteredPolls.length === 1 ? 'market' : 'markets'} available • $
+                        {filteredPolls.length} {filteredPolls.length === 1 ? 'market' : 'markets'} available • KES{" "}
                         {filteredPolls.reduce((sum, p) => sum + Number(p.total_pool || 0), 0).toFixed(0)} volume
                       </p>
                     </div>
@@ -318,10 +329,10 @@ const Dashboard = () => {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {paginatedPolls.map((poll) => {
-                    const isClosed = poll.closes_at ? new Date(poll.closes_at) <= new Date() : true;
                     const timeRemaining = formatTimeRemaining(poll.closes_at);
                     const marketTrend = getMarketTrend(poll);
                     const pollCategory = categories.find(c => c.id === poll.category);
+                    const statusStyle = STATUS_STYLES[poll.status] || STATUS_STYLES.closed;
 
                     return (
                       <div
@@ -339,11 +350,9 @@ const Dashboard = () => {
                           </div>
                         )}
                         <div className="absolute top-3 right-3 z-10">
-                          <div className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                            isClosed ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-green-500/20 text-green-400 border border-green-500/30"
-                          }`}>
-                            {isClosed ? "CLOSED" : "OPEN"}
-                          </div>
+                          <span className={`px-2 py-1 rounded-lg text-xs font-bold ${statusStyle}`}>
+                            {poll.status.toUpperCase()}
+                          </span>
                         </div>
                         <div className="relative z-10 pt-8">
                           <h3 className="font-bold text-white text-lg mb-3 line-clamp-2">{poll.title}</h3>
@@ -354,7 +363,7 @@ const Dashboard = () => {
                                 <div>
                                   <div className="text-xs text-gray-500">Volume</div>
                                   <div className={`text-lg font-bold ${getVolumeColor(poll.total_pool)}`}>
-                                    ${Number(poll.total_pool || 0).toFixed(2)}
+                                    KES {Number(poll.total_pool || 0).toFixed(2)}
                                   </div>
                                 </div>
                                 <div>
@@ -374,7 +383,7 @@ const Dashboard = () => {
                             </div>
                             <div className="flex items-center justify-between pt-3 border-t border-gray-800/50">
                               <div className="text-xs text-gray-500">
-                                {isClosed ? "Closed" : `Closes in ${timeRemaining}`}
+                                {poll.status === "open" ? `Closes in ${timeRemaining}` : poll.status}
                               </div>
                               <div className="text-xs text-cyan-400 font-medium">View Market →</div>
                             </div>
@@ -451,20 +460,28 @@ const Dashboard = () => {
               </>
             )}
 
-            {/* Create Market CTA (unchanged) */}
+            {/* Dual CTA: Create Market & Duel Challenges */}
             <div className="mt-12 text-center">
               <div className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-8 max-w-2xl mx-auto">
                 <div className="text-5xl mb-4">🚀</div>
-                <h3 className="text-2xl font-bold text-white mb-3">Create Your Own Market</h3>
+                <h3 className="text-2xl font-bold text-white mb-3">Create or Duel</h3>
                 <p className="text-gray-400 mb-6 max-w-lg mx-auto">
-                  Have a prediction you want to trade? Create your own market and let others join in.
+                  Start your own prediction market or challenge a friend head‑to‑head.
                 </p>
-                <button
-                  onClick={() => navigate("/create/poll")}
-                  className="px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-cyan-500/20 transition-all"
-                >
-                  Create New Market
-                </button>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <button
+                    onClick={() => navigate("/create/poll")}
+                    className="px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-cyan-500/20 transition-all"
+                  >
+                    Create New Market
+                  </button>
+                  <button
+                    onClick={() => navigate("/challenges")}
+                    className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-purple-500/20 transition-all"
+                  >
+                    Duel Challenges
+                  </button>
+                </div>
               </div>
             </div>
           </>

@@ -106,6 +106,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email")
     is_admin = serializers.SerializerMethodField()
     polls_remaining_today = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -116,8 +117,16 @@ class ProfileSerializer(serializers.ModelSerializer):
             "balance",
             "polls_remaining_today",
             "is_admin",
+            "avatar",
         )
 
+    def get_avatar(self, obj):
+        request = self.context.get("request")
+        if obj.avatar and request:
+            return request.build_absolute_uri(obj.avatar.url)
+        return None
+
+    
     def get_is_admin(self, obj):
         return obj.user.is_staff or obj.user.is_superuser
 
@@ -125,6 +134,11 @@ class ProfileSerializer(serializers.ModelSerializer):
         limit = 2
         return max(0, limit - obj.polls_created_today)
     
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = ('phone_number', 'avatar') 
+
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework.exceptions import AuthenticationFailed
 

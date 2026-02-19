@@ -31,7 +31,6 @@ const Navbar = ({ onCollapse }) => {
   }, []);
 
   useEffect(() => {
-    // Changed breakpoint to 768px – tablets get sidebar, phones get dock
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
 
     const handleScroll = () => {
@@ -62,25 +61,37 @@ const Navbar = ({ onCollapse }) => {
     navigate("/login");
   };
 
+  // Main navigation items (desktop sidebar)
   const navItems = [
-    { path: "/dashboard", label: "Dashboard", icon: "🏠", short: "Dashboard" },
-    { path: "/polls", label: "Polls", icon: "📊", short: "Polls" },
-    { path: "/positions", label: "Positions", icon: "📈", short: "Positions" },
-    { path: "/challenges", label: "Duel", icon: "⚔️", short: "Duel" },
-    { path: "/wallet", label: "Wallet", icon: "💰", short: "Wallet" },
-    { path: "/profile", label: "Profile", icon: "👤", short: "Profile" },
+    { path: "/dashboard", label: "Dashboard", icon: "🏠" },
+    { path: "/polls", label: "Polls", icon: "📊" },
+    { path: "/positions", label: "Positions", icon: "📈" },
+    { path: "/challenges", label: "Duel", icon: "⚔️" },
+    { path: "/wallet", label: "Wallet", icon: "💰" },
+    { path: "/profile", label: "Profile", icon: "👤" },
   ];
 
+  // Mobile dock items – now always includes "Manage"
   const dockItems = [
     { path: "/dashboard", icon: "🏠", label: "Dashboard" },
     { path: "/polls", icon: "📊", label: "Polls" },
     { path: "/positions", icon: "📈", label: "Positions" },
     { path: "/challenges", icon: "⚔️", label: "Duel" },
     { path: "/wallet", icon: "💰", label: "Wallet" },
-    { path: "/notifications", icon: "🔔", label: "Alerts" },
+    { path: "/manage/polls", icon: "⚙️", label: "Manage" },
   ];
 
   const isActive = (path) => location.pathname === path;
+
+  // Helper to get user's display name (username or email fallback)
+  const getDisplayName = () => user?.username || user?.email || "User";
+
+  // Helper to get avatar fallback initial
+  const getInitial = () => {
+    if (user?.username) return user.username.charAt(0).toUpperCase();
+    if (user?.email) return user.email.charAt(0).toUpperCase();
+    return "?";
+  };
 
   /* ===========================
      MOBILE NAV (phones only)
@@ -111,16 +122,29 @@ const Navbar = ({ onCollapse }) => {
               {user ? (
                 <>
                   <NotificationBell />
-                  <div className="flex items-center gap-1 sm:gap-2">
-                    {/* Full email on larger phones, hidden on very small screens */}
-                    <span className="text-sm text-gray-300 hidden sm:inline">
-                      {user.email}
+                  <div className="flex items-center gap-2">
+                    {/* Username next to avatar */}
+                    <span className="text-sm text-gray-300 hidden xs:inline">
+                      {getDisplayName()}
                     </span>
                     <Link
                       to="/profile"
-                      className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-sm font-bold text-black hover:scale-105 transition-transform"
+                      className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-sm font-bold text-black hover:scale-105 transition-transform overflow-hidden"
                     >
-                      {user.email?.charAt(0).toUpperCase()}
+                      {user.avatar ? (
+                        <img
+                          src={user.avatar}
+                          alt={getDisplayName()}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.style.display = "none";
+                            e.target.parentElement.innerHTML = getInitial();
+                          }}
+                        />
+                      ) : (
+                        getInitial()
+                      )}
                     </Link>
                   </div>
                 </>
@@ -144,7 +168,7 @@ const Navbar = ({ onCollapse }) => {
           </div>
         </nav>
 
-        {/* Bottom Dock – main navigation for phones */}
+        {/* Bottom Dock */}
         {user && (
           <div
             className={`fixed bottom-0 left-0 right-0 z-30 transition-transform duration-300 ${
@@ -196,7 +220,7 @@ const Navbar = ({ onCollapse }) => {
   }
 
   /* ===========================
-     DESKTOP / TABLET SIDEBAR (screens ≥768px)
+     DESKTOP / TABLET SIDEBAR
   ============================ */
   return (
     <aside
@@ -274,6 +298,30 @@ const Navbar = ({ onCollapse }) => {
             )}
           </Link>
         ))}
+
+        {/* Manage link – visible to all logged‑in users */}
+        {user && (
+          <Link
+            to="/manage/polls"
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all group ${
+              isActive("/manage/polls")
+                ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10"
+                : "text-gray-400 hover:bg-white/5 hover:text-white"
+            } ${isCollapsed ? "justify-center px-2" : ""}`}
+          >
+            <span className="text-xl transition-transform group-hover:scale-110">⚙️</span>
+            {!isCollapsed && (
+              <>
+                <span className="font-medium">Manage</span>
+                {isActive("/manage/polls") && (
+                  <div className="ml-auto w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                )}
+              </>
+            )}
+          </Link>
+        )}
+
+        {/* Alerts link – always present */}
         {!isCollapsed && (
           <Link
             to="/notifications"
@@ -281,6 +329,15 @@ const Navbar = ({ onCollapse }) => {
           >
             <span className="text-xl">🔔</span>
             <span className="font-medium">Alerts</span>
+          </Link>
+        )}
+        {isCollapsed && (
+          <Link
+            to="/notifications"
+            className="flex items-center justify-center px-2 py-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+            title="Alerts"
+          >
+            <span className="text-xl">🔔</span>
           </Link>
         )}
       </nav>
@@ -292,17 +349,35 @@ const Navbar = ({ onCollapse }) => {
             {!isCollapsed && (
               <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-cyan-500/10 to-blue-500/5 border border-cyan-500/20">
                 <div className="flex items-center gap-3">
+                  {/* Avatar with fallback */}
                   <div className="relative">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-sm font-bold text-black">
-                      {user.email?.charAt(0).toUpperCase()}
-                    </div>
+                    {user.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={getDisplayName()}
+                        className="w-9 h-9 rounded-full object-cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.style.display = "none";
+                          e.target.parentElement.innerHTML = `<div class="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-sm font-bold text-black">${getInitial()}</div>`;
+                        }}
+                      />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-sm font-bold text-black">
+                        {getInitial()}
+                      </div>
+                    )}
                     <div className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-400 rounded-full border border-[#1a1f2e] animate-pulse" />
                   </div>
-                  <div className="flex-1">
+
+                  {/* Username and email (username replaces "Trader") */}
+                  <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-white truncate">
                       {user.email}
                     </div>
-                    <div className="text-xs text-cyan-400">Trader</div>
+                    <div className="text-xs text-cyan-400 truncate">
+                      @{user.username || "user"}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -348,7 +423,7 @@ const Navbar = ({ onCollapse }) => {
               Markets <span className="text-cyan-400">{marketStats.totalMarkets}</span>
             </div>
             <div className="text-white">
-              Volume <span className="text-emerald-400">${(marketStats.totalVolume || 0).toLocaleString()}</span>
+              Volume <span className="text-emerald-400">Kes {(marketStats.totalVolume || 0).toLocaleString()}</span>
             </div>
           </div>
         </div>
