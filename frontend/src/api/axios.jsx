@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = "https://polypulsemarkets.pythonanywhere.com/api/";
+const API_BASE_URL = "https://polypulse-27p9.onrender.com/api/";
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
