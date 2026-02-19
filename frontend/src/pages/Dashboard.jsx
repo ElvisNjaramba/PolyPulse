@@ -464,7 +464,7 @@ const Dashboard = () => {
             <div className="mt-12 text-center">
               <div className="bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-8 max-w-2xl mx-auto">
                 <div className="text-5xl mb-4">🚀</div>
-                <h3 className="text-2xl font-bold text-white mb-3">Create or Duel</h3>
+                <h3 className="text-2xl font-bold text-white mb-3">Create Poll or Duel a friend</h3>
                 <p className="text-gray-400 mb-6 max-w-lg mx-auto">
                   Start your own prediction market or challenge a friend head‑to‑head.
                 </p>
@@ -479,7 +479,7 @@ const Dashboard = () => {
                     onClick={() => navigate("/challenges")}
                     className="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-purple-500/20 transition-all"
                   >
-                    Duel Challenges
+                    Bet Beshte Challenges
                   </button>
                 </div>
               </div>

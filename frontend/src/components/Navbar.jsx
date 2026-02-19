@@ -66,7 +66,7 @@ const Navbar = ({ onCollapse }) => {
     { path: "/dashboard", label: "Dashboard", icon: "🏠" },
     { path: "/polls", label: "Polls", icon: "📊" },
     { path: "/positions", label: "Positions", icon: "📈" },
-    { path: "/challenges", label: "Duel", icon: "⚔️" },
+    { path: "/challenges", label: "Bet-Beshte", icon: "⚔️" },
     { path: "/wallet", label: "Wallet", icon: "💰" },
     { path: "/profile", label: "Profile", icon: "👤" },
   ];
@@ -76,7 +76,7 @@ const Navbar = ({ onCollapse }) => {
     { path: "/dashboard", icon: "🏠", label: "Dashboard" },
     { path: "/polls", icon: "📊", label: "Polls" },
     { path: "/positions", icon: "📈", label: "Positions" },
-    { path: "/challenges", icon: "⚔️", label: "Duel" },
+    { path: "/challenges", icon: "⚔️", label: "Bet-Beshte" },
     { path: "/wallet", icon: "💰", label: "Wallet" },
     { path: "/manage/polls", icon: "⚙️", label: "Manage" },
   ];
