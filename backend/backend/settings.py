@@ -10,14 +10,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config("SECRET_KEY")
+SECRET_KEY = 'django-insecure-sinjosa(=9w!@!$+$1av^5+ez5t=b3r&c$_dbz^t5d&f$50*(c'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['https://polypulsemarket.netlify.app']
-
-
+ALLOWED_HOSTS = ['https://polypulse.co.ke']
 
 # Application definition
 
@@ -41,7 +39,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [ 
     'django.middleware.security.SecurityMiddleware',
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    # "whitenoise.middleware.WhiteNoiseMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.common.CommonMiddleware',
@@ -52,7 +50,7 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    'https://polypulsemarket.netlify.app',
+    'https://polypulse.co.ke',
 ]
 
 CORS_ALLOW_HEADERS = [
@@ -112,7 +110,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'backend.wsgi.application'
+# WSGI_APPLICATION = 'backend.wsgi.application'
 ASGI_APPLICATION = "backend.asgi.application"
 CHANNEL_LAYERS = {
     "default": {
@@ -126,19 +124,20 @@ CHANNEL_LAYERS = {
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 import dj_database_url
 
-DATABASES = {
-    "default": dj_database_url.config(default=config("DATABASE_URL"))
-}
-
+# DATABASES = {
+#     "default": dj_database_url.config(
+#         default=config("DATABASE_URL") 
+#     )
+# }
 
 
 # Password validation

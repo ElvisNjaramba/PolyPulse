@@ -38,7 +38,7 @@ const Landing = () => {
     },
     {
       icon: <Users className="w-6 h-6 text-blue-400" />,
-      title: "Duel Challenges",
+      title: "Bet-Beshte Challenges",
       description:
         "Challenge friends or other traders directly. Set your own terms and stakes.",
     },
