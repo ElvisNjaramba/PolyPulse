@@ -10,9 +10,8 @@ from django.conf import settings
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from authentication.tokens import get_tokens_for_user
 
-MAX_ACCOUNTS_PER_DEVICE = 2
-MAX_ACCOUNTS_PER_IP = 3
-
+MAX_ACCOUNTS_PER_DEVICE = 100
+MAX_ACCOUNTS_PER_IP = 100
 class RegisterSerializer(serializers.Serializer):
     username = serializers.CharField()
     email = serializers.EmailField()
@@ -84,7 +83,7 @@ class RegisterSerializer(serializers.Serializer):
         profile.email_verified = False
         profile.save()
 
-        verify_link = f"http://localhost:5173/verify-email/{profile.email_verification_token}"
+        verify_link = f"https://polypulse.co.ke/verify-email/{profile.email_verification_token}"
 
         send_mail(
             subject="Verify your email",

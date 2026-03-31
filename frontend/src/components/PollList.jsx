@@ -376,49 +376,25 @@ const PollsList = () => {
                 </div>
 
                 {/* EXPANDED OPTIONS */}
-                <div
-                  className={`transition-all duration-300 ease-in-out ${
-                    expanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-                  } overflow-hidden`}
-                >
-                  {expanded && poll.options?.length > 0 && (
-                    <div className="border-t border-gray-700/50 p-6 space-y-3 bg-gray-900/50">
-                      <h4 className="text-sm font-medium text-gray-400 mb-2">
-                        Trade an option
-                      </h4>
-                      {poll.options.map((opt) => (
-                        <div
-                          key={opt.id}
-                          className="flex justify-between items-center bg-gray-800 rounded-xl p-4 hover:bg-gray-750 transition border border-gray-700/50"
-                        >
-                          <div>
-                            <div className="font-semibold text-white">
-                              {opt.text}
-                            </div>
-                            <div className="text-sm text-gray-400">
-                              Price:{" "}
-                              <span className="text-cyan-400 font-mono">
-                                KES {(opt.price || 0.5).toFixed(3)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/polls/${poll.id}`, {
-                                state: { option: opt },
-                              });
-                            }}
-                            className="bg-gradient-to-r from-cyan-500 to-blue-500 px-5 py-2 rounded-xl font-medium text-sm shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 transition-all hover:scale-105"
-                          >
-                            Trade
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+{poll.options?.length > 0 && (
+  <div className="border-t border-gray-700/50 px-6 py-4 bg-gray-900/50 flex flex-wrap gap-2">
+    {poll.options.map((opt) => (
+      <button
+        key={opt.id}
+        onClick={(e) => {
+          e.stopPropagation();
+          navigate(`/polls/${poll.id}`, { state: { option: opt } });
+        }}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800 border border-gray-700/50 hover:border-cyan-500/40 hover:bg-gray-750 transition text-sm"
+      >
+        <span className="text-white font-medium">{opt.text}</span>
+        <span className="text-cyan-400 font-mono text-xs">
+          {((opt.price || 0.5) * 100).toFixed(1)}¢
+        </span>
+      </button>
+    ))}
+  </div>
+)}
               </div>
             );
           })}

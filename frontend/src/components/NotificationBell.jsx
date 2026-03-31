@@ -54,7 +54,21 @@ const NotificationBell = () => {
       console.error('Mark all read failed', err);
     }
   };
-
+const getNotificationIcon = (type) => {
+  const icons = {
+    mention: '💬',
+    bet_won: '🏆',
+    bet_refunded: '↩️',
+    poll_resolved: '✅',
+    challenge_accepted: '🤝',
+    challenge_won: '🥇',
+    challenge_lost: '😞',
+    challenge_cancelled: '❌',
+    challenge_received: '⚔️',
+    market_challenge: '🔔',
+  };
+  return icons[type] || '🔔';
+};
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -88,20 +102,28 @@ const NotificationBell = () => {
                 No notifications
               </div>
             ) : (
-              notifications.slice(0, 5).map((n) => (
-                <div
-                  key={n.id}
-                  className={`px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${
-                    !n.is_read ? 'bg-cyan-500/5' : ''
-                  }`}
-                  onClick={() => handleMarkRead(n.id)}
-                >
-                  <p className="text-sm text-gray-200">{n.message}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {new Date(n.created_at).toLocaleString()}
-                  </p>
-                </div>
-              ))
+notifications.slice(0, 5).map((n) => (
+  <div
+    key={n.id}
+    className={`px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors cursor-pointer ${
+      !n.is_read ? 'bg-cyan-500/5' : ''
+    }`}
+    onClick={() => handleMarkRead(n.id)}
+  >
+    <div className="flex items-start gap-2">
+      <span className="text-base mt-0.5 flex-shrink-0">{getNotificationIcon(n.notification_type)}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-gray-200 leading-snug">{n.message}</p>
+        <p className="text-xs text-gray-500 mt-1">
+          {new Date(n.created_at).toLocaleString()}
+        </p>
+      </div>
+      {!n.is_read && (
+        <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full flex-shrink-0 mt-1.5" />
+      )}
+    </div>
+  </div>
+))
             )}
           </div>
           <div className="p-2 border-t border-gray-800 text-center">

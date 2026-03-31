@@ -30,6 +30,7 @@ import ChallengeCreate from "./pages/ChallengeCreate";
 
 import Landing from "./pages/LandingPage";
 import PollAdminPanel from "./pages/PollAdminPanel";
+import Leaderboard from "./pages/Leaderboard";
 
 // Component to handle root route based on auth
 const RootRedirect = () => {
@@ -93,6 +94,7 @@ function App() {
             <Route path="/wallet" element={<Wallet />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
           </Route>
 
           {/* 🛠 Admin Dashboard */}

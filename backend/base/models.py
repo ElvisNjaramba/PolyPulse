@@ -26,6 +26,10 @@ class Poll(models.Model):
     creator = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    resolution_criteria = models.TextField(
+    blank=True,
+    help_text="Conditions that must be met before this market can be resolved."
+)
     category = models.ForeignKey(
         PollCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name="polls"
     )
@@ -52,8 +56,13 @@ class Poll(models.Model):
 class PollOption(models.Model):
     poll = models.ForeignKey(Poll, related_name="options", on_delete=models.CASCADE)
     text = models.CharField(max_length=255)
+    order = models.PositiveSmallIntegerField(default=0)  # display order
+
+    class Meta:
+        ordering = ["order"]
 
     def is_yes(self):
+        """Legacy helper — True only for classic binary Yes/No markets."""
         return self.text.strip().lower() == "yes"
 
 
@@ -103,6 +112,8 @@ class Notification(models.Model):
         ("challenge_won", "Challenge Won"),
         ("challenge_lost", "Challenge Lost"),
         ("challenge_cancelled", "Challenge Cancelled"),
+        ("challenge_received", "Challenge Received"),
+        ("market_challenge", "Market Challenge"),
     )
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
@@ -134,166 +145,152 @@ class Position(models.Model):
 
 
 class Market(models.Model):
+    """
+    Multi-outcome LMSR market maker.
+    Each PollOption maps to one entry in the JSON `shares` dict:
+        { "<option_id>": <float>, ... }
+    Binary Yes/No markets are just the two-option case.
+    """
     poll = models.OneToOneField(Poll, related_name="market", on_delete=models.CASCADE)
-
-    yes_shares = models.FloatField(default=0)
-    no_shares = models.FloatField(default=0)
+    shares = models.JSONField(default=dict)   # {str(option_id): float}
     liquidity_b = models.FloatField(default=100.0)
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    # ── legacy columns kept so existing migrations don't break ──────────
+    yes_shares = models.FloatField(default=0)
+    no_shares  = models.FloatField(default=0)
+    # ────────────────────────────────────────────────────────────────────
 
-    def _cost(self, yes, no):
-        """
-        LMSR cost function with log-sum-exp trick for numerical stability.
+    def _get_q(self):
+        """Return share vector as list[float] in option order."""
+        return [
+            self.shares.get(str(opt.id), 0.0)
+            for opt in self.poll.options.all()
+        ]
 
-        Naive:  b * log(exp(yes/b) + exp(no/b))
-        Problem: exp() overflows when yes/b > ~709 (i.e. yes > 70 900 with b=100).
-
-        Fix: factor out max(yes, no) before exponentiation so the larger
-        argument is always exp(0) = 1, keeping values tiny.
-        """
+    def _cost(self, q):
+        """N-option LMSR cost with log-sum-exp stability."""
         b = self.liquidity_b
-        a = max(yes, no)   # baseline to keep exponents small
-        return a + b * math.log(
-            math.exp((yes - a) / b) + math.exp((no - a) / b)
-        )
+        a = max(q)
+        return a + b * math.log(sum(math.exp((qi - a) / b) for qi in q))
 
-    # ------------------------------------------------------------------
-    # Pricing
-    # ------------------------------------------------------------------
+    def price_for_option(self, option):
+        """Probability/price (0–1) for one option."""
+        q = self._get_q()
+        b = self.liquidity_b
+        a = max(q)
+        exps = [math.exp((qi - a) / b) for qi in q]
+        total = sum(exps)
+        idx = list(self.poll.options.values_list("id", flat=True)).index(option.id)
+        return exps[idx] / total
 
+    # ── Legacy binary helpers (works for 2-option markets) ──────────────
     def price_yes(self):
-        """Probability / price of YES (0–1). Uses softmax = LMSR marginal cost."""
-        b = self.liquidity_b
-        # Subtract max for stability (same trick as _cost)
-        a = max(self.yes_shares, self.no_shares)
-        exp_yes = math.exp((self.yes_shares - a) / b)
-        exp_no  = math.exp((self.no_shares  - a) / b)
-        return exp_yes / (exp_yes + exp_no)
+        opts = list(self.poll.options.all())
+        if not opts:
+            return 0.5
+        return self.price_for_option(opts[0])
 
     def price_no(self):
         return 1.0 - self.price_yes()
+    # ────────────────────────────────────────────────────────────────────
 
-    # ------------------------------------------------------------------
-    # Trading
-    # ------------------------------------------------------------------
-
-    def buy(self, is_yes: bool, amount: float):
+    def buy(self, option, amount: float):
         """
-        Buy YES or NO shares by spending exactly `amount` dollars.
-
-        LMSR buy derivation
-        -------------------
-        We want to find shares s such that:
-            C(q_yes + s, q_no) - C(q_yes, q_no) = amount   [YES case]
-
-        Because C = b*log(exp(q_yes/b) + exp(q_no/b)), adding `amount` to
-        the cost means the new "weight sum" W' = exp(new_cost/b).
-
-        For YES:
-            exp((q_yes + s)/b) + exp(q_no/b) = W'
-            => s = b * log(W' - exp(q_no/b)) - q_yes
-
-        Returns
-        -------
-        (shares_issued: float, current_price: float)
+        Buy shares in `option` by spending exactly `amount`.
+        Returns (shares_issued: float, new_price: float).
         """
+        q = self._get_q()
+        option_ids = list(self.poll.options.values_list("id", flat=True))
+        idx = option_ids.index(option.id)
+
         b = self.liquidity_b
-        q_yes = self.yes_shares
-        q_no  = self.no_shares
-
-        old_cost = self._cost(q_yes, q_no)
+        old_cost = self._cost(q)
         new_cost = old_cost + amount
 
-        # Use the log-sum-exp baseline to compute W' = exp(new_cost/b) safely.
-        # W' can be huge, but we only ever subtract exp(q_no/b) or exp(q_yes/b)
-        # from it, and then take log — so we keep working in log space.
-        #
-        # log(W' - exp(q_no/b))
-        #   = log(exp(new_cost/b) - exp(q_no/b))
-        #   = new_cost/b + log(1 - exp((q_no - new_cost)/b))   [q_no < new_cost always]
-        #
-        # This stays finite as long as new_cost > q_no, which is guaranteed
-        # because new_cost = old_cost + amount > old_cost >= q_no (LMSR property).
+        # For option at idx:  exp((q[idx]+s)/b) + rest = exp(new_cost/b)
+        rest_sum = sum(math.exp((q[i] - new_cost) / b) for i in range(len(q)) if i != idx)
+        log_inner = new_cost / b + math.log(max(1.0 - rest_sum, 1e-15))
+        shares = b * log_inner - q[idx]
 
-        if is_yes:
-            log_inner = new_cost / b + math.log(1.0 - math.exp((q_no - new_cost) / b))
-            shares = b * log_inner - q_yes
-            self.yes_shares += shares
-        else:
-            log_inner = new_cost / b + math.log(1.0 - math.exp((q_yes - new_cost) / b))
-            shares = b * log_inner - q_no
-            self.no_shares += shares
+        q[idx] += shares
+        self.shares = {str(oid): q[i] for i, oid in enumerate(option_ids)}
+
+        # sync legacy columns for binary markets
+        if len(option_ids) == 2:
+            self.yes_shares = q[0]
+            self.no_shares  = q[1]
 
         self.save()
 
+        new_price = self.price_for_option(option)
         MarketPriceSnapshot.objects.create(
             market=self,
             yes_price=self.price_yes(),
             no_price=self.price_no(),
         )
+        return shares, new_price
 
-        return shares, self.price_yes() if is_yes else self.price_no()
-
-    def sell(self, is_yes: bool, shares: float):
+    def sell(self, option, shares: float):
         """
-        Sell `shares` YES or NO shares back to the market.
-
-        The refund is simply the decrease in the cost function — no fee taken.
-
-        Returns
-        -------
-        dict with keys: refund, yes_price, no_price
+        Sell `shares` of `option` back to the market.
+        Returns dict with refund, yes_price, no_price.
         """
         if shares <= 0:
             raise ValueError("Shares must be positive.")
-        if is_yes and self.yes_shares < shares:
-            raise ValueError(f"Not enough YES shares in market (have {self.yes_shares:.4f}).")
-        if not is_yes and self.no_shares < shares:
-            raise ValueError(f"Not enough NO shares in market (have {self.no_shares:.4f}).")
 
-        old_cost = self._cost(self.yes_shares, self.no_shares)
+        option_ids = list(self.poll.options.values_list("id", flat=True))
+        idx = option_ids.index(option.id)
+        q = self._get_q()
 
-        if is_yes:
-            self.yes_shares -= shares
-        else:
-            self.no_shares -= shares
+        if q[idx] < shares:
+            raise ValueError(f"Not enough shares in market (have {q[idx]:.4f}).")
 
-        new_cost = self._cost(self.yes_shares, self.no_shares)
-
-        # old_cost > new_cost always when selling, so refund is positive.
+        old_cost = self._cost(q)
+        q[idx] -= shares
+        new_cost = self._cost(q)
         refund = old_cost - new_cost
 
-        self.save()
+        self.shares = {str(oid): q[i] for i, oid in enumerate(option_ids)}
+        if len(option_ids) == 2:
+            self.yes_shares = q[0]
+            self.no_shares  = q[1]
 
+        self.save()
         MarketPriceSnapshot.objects.create(
             market=self,
             yes_price=self.price_yes(),
             no_price=self.price_no(),
         )
-
-        return {
-            "refund": refund,
-            "yes_price": self.price_yes(),
-            "no_price": self.price_no(),
-        }
+        return {"refund": refund, "yes_price": self.price_yes(), "no_price": self.price_no()}
 
 
 class MarketPosition(models.Model):
     user   = models.ForeignKey(User, on_delete=models.CASCADE)
     market = models.ForeignKey(Market, on_delete=models.CASCADE)
+    # Multi-option storage: { str(option_id): float }
+    option_shares = models.JSONField(default=dict)
+    option_spent  = models.JSONField(default=dict)
 
+    # Legacy binary columns — kept for backwards compatibility
     yes_shares = models.FloatField(default=0)
     no_shares  = models.FloatField(default=0)
-
-    yes_spent = models.FloatField(default=0)
-    no_spent  = models.FloatField(default=0)
+    yes_spent  = models.FloatField(default=0)
+    no_spent   = models.FloatField(default=0)
 
     class Meta:
         unique_together = ("user", "market")
 
+    def shares_for(self, option):
+        return self.option_shares.get(str(option.id), 0.0)
+
+    def spent_for(self, option):
+        return self.option_spent.get(str(option.id), 0.0)
+
+    def avg_price_for(self, option):
+        s = self.shares_for(option)
+        return self.spent_for(option) / s if s else 0
+
+    # Legacy helpers
     def avg_yes_price(self):
         return self.yes_spent / self.yes_shares if self.yes_shares else 0
 
@@ -321,16 +318,23 @@ class Challenge(models.Model):
         ('cancelled', 'Cancelled'),
         ('expired',   'Expired'),
     )
-    CHOICES = [
-        ('yes', 'Yes'),
-        ('no',  'No'),
-    ]
+    # CHOICES = [
+    #     ('yes', 'Yes'),
+    #     ('no',  'No'),
+    # ]
 
     creator  = models.ForeignKey(User, on_delete=models.CASCADE, related_name='challenges_created')
     opponent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='challenges_received')
-    creator_choice = models.CharField(max_length=3, choices=CHOICES, default='yes')
+    creator_choice = models.CharField(
+        max_length=255,
+        help_text="The option text the creator is backing"
+    )
     amount   = models.DecimalField(max_digits=10, decimal_places=2)
     question = models.CharField(max_length=255)
+    is_open = models.BooleanField(default=False, help_text="Open challenge anyone can accept")
+    poll = models.ForeignKey(
+        'Poll', null=True, blank=True, on_delete=models.SET_NULL, related_name='challenges'
+    )
     status   = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     expires_at = models.DateTimeField()
     winner   = models.ForeignKey(

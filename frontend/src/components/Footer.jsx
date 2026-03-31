@@ -74,7 +74,7 @@ const Footer = ({ isCollapsed }) => {
             ))}
 
             <a
-              href="https://twitter.com/polypulse"
+              href=""
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-gray-400 hover:text-cyan-400 transition"
@@ -109,7 +109,7 @@ const Footer = ({ isCollapsed }) => {
             {/* Social */}
             <div className="flex items-center gap-3">
               <a
-                href="https://twitter.com/polypulse"
+                href=""
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-500 hover:text-cyan-400 transition"
@@ -120,7 +120,7 @@ const Footer = ({ isCollapsed }) => {
               </a>
 
               <a
-                href="https://discord.gg/polypulse"
+                href=""
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-500 hover:text-cyan-400 transition"
@@ -134,9 +134,9 @@ const Footer = ({ isCollapsed }) => {
 
           {/* Mobile Links – always visible, includes real trader count */}
           <div className="flex md:hidden w-full justify-center gap-4 mt-3 pt-3 border-t border-white/10 text-xs">
-            <Link to="/terms" className="text-gray-400 hover:text-cyan-400">Terms</Link>
-            <Link to="/privacy" className="text-gray-400 hover:text-cyan-400">Privacy</Link>
-            <Link to="/faq" className="text-gray-400 hover:text-cyan-400">FAQ</Link>
+            <Link to="" className="text-gray-400 hover:text-cyan-400">Terms</Link>
+            <Link to="" className="text-gray-400 hover:text-cyan-400">Privacy</Link>
+            <Link to="" className="text-gray-400 hover:text-cyan-400">FAQ</Link>
             {/* <span className="text-gray-400">
               {loading ? "..." : activeTraders?.toLocaleString() || "0"} traders
             </span> */}

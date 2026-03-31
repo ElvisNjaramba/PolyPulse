@@ -1,18 +1,37 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams} from "react-router-dom";
 import api from "../api/axios";
 
 const ChallengeCreate = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [formData, setFormData] = useState({
-    opponent_username: "",
-    amount: "",
-    question: "",
-    expires_at: "",
-    creator_choice: "yes", // default choice
-  });
+  const [searchParams] = useSearchParams();
+  const [pollOptions, setPollOptions] = useState([]);
+const [formData, setFormData] = useState({
+  opponent_username: "",
+  amount: "",
+  question: searchParams.get("question") || "",
+  expires_at: "",
+  creator_choice: "yes",
+  is_open: searchParams.get("poll") ? true : false,
+  poll: searchParams.get("poll") || "",
+});
+
+useEffect(() => {
+  const pollId = searchParams.get("poll");
+  if (!pollId) return;
+  api.get(`/polls/${pollId}/`)
+    .then(res => {
+      const opts = res.data.options?.map(o => o.text) || [];
+      setPollOptions(opts);
+      // pre-select first option
+      if (opts.length > 0) {
+        setFormData(prev => ({ ...prev, creator_choice: opts[0] }));
+      }
+    })
+    .catch(console.error);
+}, []);
 
   const handleChange = (e) => {
     const { name, value, type } = e.target;
@@ -20,26 +39,31 @@ const ChallengeCreate = () => {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError("");
 
-    try {
-      if (!formData.opponent_username.trim()) throw new Error("Opponent username required");
-      if (!formData.amount || formData.amount <= 0) throw new Error("Valid amount required");
-      if (!formData.question.trim()) throw new Error("Question required");
-      if (!formData.expires_at) throw new Error("Expiration time required");
-      if (new Date(formData.expires_at) <= new Date()) throw new Error("Expiration must be in future");
+  try {
+    if (!formData.is_open && !formData.opponent_username.trim()) throw new Error("Opponent username required");
+    if (!formData.amount || formData.amount <= 0) throw new Error("Valid amount required");
+    if (!formData.question.trim()) throw new Error("Question required");
+    if (!formData.expires_at) throw new Error("Expiration time required");
+    if (new Date(formData.expires_at) <= new Date()) throw new Error("Expiration must be in future");
 
-      await api.post("/challenges/", formData);
-      navigate("/challenges");
-    } catch (err) {
-      setError(err.response?.data?.error || err.message || "Failed to create challenge");
-    } finally {
-      setLoading(false);
-    }
-  };
+    const payload = {
+      ...formData,
+      poll: formData.poll || undefined,
+      opponent_username: formData.is_open ? "" : formData.opponent_username,
+    };
+    await api.post("/challenges/", payload);   
+    navigate("/challenges");
+  } catch (err) {
+    setError(err.response?.data?.error || err.message || "Failed to create challenge");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
@@ -71,19 +95,51 @@ const ChallengeCreate = () => {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-800/50 p-6">
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Opponent Username *</label>
-                <input
-                  type="text"
-                  name="opponent_username"
-                  value={formData.opponent_username}
-                  onChange={handleChange}
-                  placeholder="Enter username"
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
-                  required
-                />
-              </div>
 
+{/* Challenge Type Toggle */}
+<div>
+  <label className="block text-sm font-medium text-gray-300 mb-2">Challenge Type *</label>
+  <div className="flex gap-4">
+    <label className="flex items-center gap-2 cursor-pointer">
+      <div
+        onClick={() => setFormData(prev => ({ ...prev, is_open: false }))}
+        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer ${
+          !formData.is_open ? "border-cyan-500 bg-cyan-500/20" : "border-gray-600"
+        }`}
+      >
+        {!formData.is_open && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
+      </div>
+      <span className="text-gray-300">Direct (specific user)</span>
+    </label>
+    <label className="flex items-center gap-2 cursor-pointer">
+      <div
+        onClick={() => setFormData(prev => ({ ...prev, is_open: true }))}
+        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer ${
+          formData.is_open ? "border-cyan-500 bg-cyan-500/20" : "border-gray-600"
+        }`}
+      >
+        {formData.is_open && <div className="w-2 h-2 rounded-full bg-cyan-500" />}
+      </div>
+      <span className="text-gray-300">Open (anyone can accept)</span>
+    </label>
+  </div>
+</div>
+
+{/* Conditionally show opponent field */}
+{!formData.is_open && (
+  <div>
+    <label className="block text-sm font-medium text-gray-300 mb-2">Opponent Username *</label>
+    <input
+      type="text"
+      name="opponent_username"
+      value={formData.opponent_username}
+      onChange={handleChange}
+      placeholder="Enter username"
+      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+      required={!formData.is_open}
+    />
+  </div>
+)}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Bet Amount (Kes) *</label>
                 <input
@@ -100,48 +156,57 @@ const ChallengeCreate = () => {
                 <p className="text-xs text-gray-500 mt-2">Both you and your opponent will stake this amount</p>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Your Prediction *</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="creator_choice"
-                      value="yes"
-                      checked={formData.creator_choice === 'yes'}
-                      onChange={handleChange}
-                      className="hidden"
-                    />
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      formData.creator_choice === 'yes' 
-                        ? "border-green-500 bg-green-500/20" 
-                        : "border-gray-600"
-                    }`}>
-                      {formData.creator_choice === 'yes' && <div className="w-2 h-2 rounded-full bg-green-500" />}
-                    </div>
-                    <span className="text-gray-300">Yes</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="creator_choice"
-                      value="no"
-                      checked={formData.creator_choice === 'no'}
-                      onChange={handleChange}
-                      className="hidden"
-                    />
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      formData.creator_choice === 'no' 
-                        ? "border-red-500 bg-red-500/20" 
-                        : "border-gray-600"
-                    }`}>
-                      {formData.creator_choice === 'no' && <div className="w-2 h-2 rounded-full bg-red-500" />}
-                    </div>
-                    <span className="text-gray-300">No</span>
-                  </label>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Opponent will automatically get the opposite side</p>
-              </div>
+<div>
+  <label className="block text-sm font-medium text-gray-300 mb-2">
+    Your Prediction *
+  </label>
+
+  {pollOptions.length > 0 ? (
+    <div className="flex flex-wrap gap-3">
+      {pollOptions.map((opt) => (
+        <label key={opt} className="flex items-center gap-2 cursor-pointer">
+          <div
+            onClick={() => setFormData(prev => ({ ...prev, creator_choice: opt }))}
+            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer ${
+              formData.creator_choice === opt
+                ? "border-cyan-500 bg-cyan-500/20"
+                : "border-gray-600"
+            }`}
+          >
+            {formData.creator_choice === opt && (
+              <div className="w-2 h-2 rounded-full bg-cyan-500" />
+            )}
+          </div>
+          <span className="text-gray-300">{opt}</span>
+        </label>
+      ))}
+    </div>
+  ) : (
+    <div className="flex gap-4">
+      {["yes", "no"].map((choice) => (
+        <label key={choice} className="flex items-center gap-2 cursor-pointer">
+          <div
+            onClick={() => setFormData(prev => ({ ...prev, creator_choice: choice }))}
+            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer ${
+              formData.creator_choice === choice
+                ? choice === "yes" ? "border-green-500 bg-green-500/20" : "border-red-500 bg-red-500/20"
+                : "border-gray-600"
+            }`}
+          >
+            {formData.creator_choice === choice && (
+              <div className={`w-2 h-2 rounded-full ${choice === "yes" ? "bg-green-500" : "bg-red-500"}`} />
+            )}
+          </div>
+          <span className="text-gray-300 capitalize">{choice}</span>
+        </label>
+      ))}
+    </div>
+  )}
+
+  <p className="text-xs text-gray-500 mt-2">
+    Opponent gets the opposite side automatically
+  </p>
+</div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Question / Bet Description *</label>

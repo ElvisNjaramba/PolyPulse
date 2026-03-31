@@ -42,6 +42,22 @@ const Notifications = () => {
     }
   };
 
+  const getNotificationIcon = (type) => {
+  const icons = {
+    mention: '💬',
+    bet_won: '🏆',
+    bet_refunded: '↩️',
+    poll_resolved: '✅',
+    challenge_accepted: '🤝',
+    challenge_won: '🥇',
+    challenge_lost: '😞',
+    challenge_cancelled: '❌',
+    challenge_received: '⚔️',
+    market_challenge: '🔔',
+  };
+  return icons[type] || '🔔';
+};
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 flex items-center justify-center">
@@ -49,6 +65,8 @@ const Notifications = () => {
       </div>
     );
   }
+
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-4 md:p-6">
@@ -88,17 +106,20 @@ const Notifications = () => {
                 }`}
                 onClick={() => !n.is_read && handleMarkRead(n.id)}
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <p className="text-white">{n.message}</p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {new Date(n.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  {!n.is_read && (
-                    <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                  )}
-                </div>
+<div className="flex items-start justify-between gap-4">
+  <div className="flex items-start gap-3 flex-1">
+    <span className="text-xl mt-0.5">{getNotificationIcon(n.notification_type)}</span>
+    <div className="flex-1">
+      <p className="text-white">{n.message}</p>
+      <p className="text-xs text-gray-500 mt-2">
+        {new Date(n.created_at).toLocaleString()}
+      </p>
+    </div>
+  </div>
+  {!n.is_read && (
+    <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse flex-shrink-0 mt-2" />
+  )}
+</div>
               </div>
             ))}
           </div>

@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ChallengeAcceptView, ChallengeCancelView, ChallengeDetailView, ChallengeListCreateView, ChallengeResolveView, CommentLikeToggle,MarketPriceHistoryView, NotificationListView, NotificationReadAllView, NotificationReadView, PollCancelView, PollCommentView, PollCreateView, PollDetailView, PollListView, PlaceBetView, PollResolveView, PollSuspendView, LeaderboardView, SellSharesView, profile_view, user_positions, poll_stats, PollCategoryListView
+from .views import ChallengeAcceptView, ChallengeCancelView, ChallengeDetailView, ChallengeListCreateView, ChallengeResolveView, CommentLikeToggle,MarketPriceHistoryView, NotificationListView, NotificationReadAllView, AcceptOpenChallengeView, NotificationReadView, PollCancelView, PollCommentView, PollCreateView, PollDetailView, PollListView, PlaceBetView, PollResolveView, PollSuspendView, LeaderboardView, SellSharesView, profile_view, user_positions, PublicChallengeListView, poll_stats, PollCategoryListView
 
 urlpatterns = [
     path("polls/", PollListView.as_view(), name="poll-list"),
@@ -31,4 +31,7 @@ urlpatterns = [
     path('challenges/<int:pk>/accept/', ChallengeAcceptView.as_view()),
     path('challenges/<int:pk>/resolve/', ChallengeResolveView.as_view()),
     path('challenges/<int:pk>/cancel/', ChallengeCancelView.as_view()),
+    path('challenges/<int:pk>/accept-open/', AcceptOpenChallengeView.as_view()),
+
+    path('challenges/public/', PublicChallengeListView.as_view()),
 ]

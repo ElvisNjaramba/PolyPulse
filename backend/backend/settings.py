@@ -15,7 +15,7 @@ SECRET_KEY = 'django-insecure-sinjosa(=9w!@!$+$1av^5+ez5t=b3r&c$_dbz^t5d&f$50*(c
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ['https://polypulse.co.ke']
+ALLOWED_HOSTS = ['polypulse.co.ke', 'api.polypulse.co.ke', '102.68.86.102', '127.0.0.1', 'localhost']
 
 # Application definition
 
@@ -51,6 +51,8 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     'https://polypulse.co.ke',
+'http://polypulse.co.ke',
+'https://api.polypulse.co.ke',
 ]
 
 CORS_ALLOW_HEADERS = [
@@ -65,6 +67,11 @@ CORS_ALLOW_HEADERS = [
     "x-requested-with",
 ]
 
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://api.polypulse.co.ke',
+    'https://polypulse.co.ke',
+]
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         "rest_framework_simplejwt.authentication.JWTAuthentication",  
@@ -181,8 +188,9 @@ DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
 
 
 
-STATIC_URL = 'static/'
-STATICFILES_DIRS = [BASE_DIR, 'static/']
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [BASE_DIR / 'static']
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

@@ -4,6 +4,7 @@ from wallet.models import WalletTransaction
 from .models import Challenge, MarketPosition, MarketPriceSnapshot, Notification, Poll, PollCategory, PollComment, PollOption, Bet, User
 from django.db.models import Sum
 from .models import Market
+from difflib import SequenceMatcher
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -34,8 +35,10 @@ class PollOptionSerializer(serializers.ModelSerializer):
         ]
 
     def get_price(self, obj):
-        market = obj.poll.market
-        return market.price_yes() if obj.text.lower() == "yes" else market.price_no()
+        try:
+            return round(obj.poll.market.price_for_option(obj), 4)
+        except Exception:
+            return 0.5
     
     def get_volume(self, obj):
         total = obj.bets.aggregate(total=Sum("amount"))["total"]
@@ -49,7 +52,7 @@ class PollOptionSerializer(serializers.ModelSerializer):
         position = MarketPosition.objects.filter(user=request.user, market=market).first()
         if not position:
             return 0
-        return position.yes_shares if obj.text.lower() == "yes" else position.no_shares
+        return round(position.shares_for(obj), 4)
 
     def get_total_shares(self, obj):
         market = obj.poll.market
@@ -128,6 +131,7 @@ class PollDetailSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "resolution_criteria",
             "is_free",
             "min_bet",
             "status",
@@ -143,6 +147,7 @@ class PollDetailSerializer(serializers.ModelSerializer):
             "category",   
             'creator',  
             "created_at",
+
         ]
 
     def get_can_accept_bets(self, obj):
@@ -201,6 +206,7 @@ class PollCreateSerializer(serializers.ModelSerializer):
         fields = [
             "title",
             "description",
+            "resolution_criteria",
             "category",
             "is_free",
             "min_bet",
@@ -209,30 +215,39 @@ class PollCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_options(self, value):
-        texts = {opt["text"].lower() for opt in value}
-        if texts != {"yes", "no"}:
-            raise serializers.ValidationError(
-                "Market polls must have exactly two options: Yes and No"
-            )
+        if len(value) < 2:
+            raise serializers.ValidationError("A market must have at least 2 options.")
+        if len(value) > 10:
+            raise serializers.ValidationError("A market can have at most 10 options.")
+        texts = [opt["text"].strip() for opt in value]
+        if len(texts) != len(set(t.lower() for t in texts)):
+            raise serializers.ValidationError("Duplicate option texts are not allowed.")
         return value
+
+    def validate(self, data):
+        title = data.get("title", "").strip().lower()
+        open_titles = Poll.objects.filter(
+            status="open"
+        ).values_list("title", flat=True)
+
+        for existing in open_titles:
+            similarity = SequenceMatcher(
+                None, title, existing.strip().lower()
+            ).ratio()
+            if similarity >= 0.8:
+                raise serializers.ValidationError(
+                    f'A very similar market already exists: "{existing}". '
+                    "Consider participating there instead of creating a duplicate."
+                )
+        return data
 
     def create(self, validated_data):
         options_data = validated_data.pop("options")
         user = self.context["request"].user
-
-        poll = Poll.objects.create(
-            creator=user,
-            **validated_data
-        )
-
-        for option in options_data:
-            PollOption.objects.create(
-                poll=poll,
-                text=option["text"]
-            )
-
+        poll = Poll.objects.create(creator=user, **validated_data)
+        for i, option in enumerate(options_data):
+            PollOption.objects.create(poll=poll, text=option["text"].strip(), order=i)
         return poll
-
 
 class PollOptionReadSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
@@ -243,12 +258,9 @@ class PollOptionReadSerializer(serializers.ModelSerializer):
 
     def get_price(self, obj):
         try:
-            market = obj.poll.market
-            if obj.text.lower() == "yes":
-                return market.price_yes()
-            return market.price_no()
-        except (Market.DoesNotExist, AttributeError):
-            return 0.5  
+            return round(obj.poll.market.price_for_option(obj), 4)
+        except Exception:
+            return 0.5 
 
 class PollListSerializer(serializers.ModelSerializer):
     creator = serializers.StringRelatedField()
@@ -264,6 +276,7 @@ class PollListSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "resolution_criteria",
             "creator",
             "category",
             "is_free",
@@ -314,21 +327,14 @@ class BetCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid option for this poll.")
 
         # ✅ ONE-SIDE RULE: prevent betting on both YES and NO in the same poll
-        is_yes = option.is_yes()
-        opposite_option = poll.options.exclude(id=option.id).first()
-        if opposite_option:
-            has_opposite_bet = Bet.objects.filter(
-                user=user,
-                poll=poll,
-                option=opposite_option,
-            ).exists()
-            if has_opposite_bet:
-                side = "YES" if is_yes else "NO"
-                raise serializers.ValidationError(
-                    f"You already have a position on the other side of this market. "
-                    f"You cannot bet {side} after already betting {'NO' if is_yes else 'YES'}. "
-                    f"Sell your existing shares first."
-                )
+        has_other_position = Bet.objects.filter(
+            user=user, poll=poll
+        ).exclude(option=option).exists()
+        if has_other_position:
+            raise serializers.ValidationError(
+                "You already have a position on a different option in this market. "
+                "Sell your existing shares before switching sides."
+            )
 
         if poll.is_free:
             data["amount"] = 1.0
@@ -354,12 +360,10 @@ class PollOptionDetailSerializer(serializers.ModelSerializer):
         fields = ["id", "text", "price"]
 
     def get_price(self, obj):
-        market = obj.poll.market
-        is_yes = obj == obj.poll.options.first()
-        return round(
-            market.price_yes() if is_yes else market.price_no(),
-            4
-        )
+        try:
+            return round(obj.poll.market.price_for_option(obj), 4)
+        except Exception:
+            return 0.5
 
 class MarketOptionSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
@@ -370,12 +374,10 @@ class MarketOptionSerializer(serializers.ModelSerializer):
         fields = ["id", "text", "price", "user_shares"]
 
     def get_price(self, obj):
-        market = obj.poll.market
-        return (
-            market.price_yes()
-            if obj.text.lower() == "yes"
-            else market.price_no()
-        )
+        try:
+            return round(obj.poll.market.price_for_option(obj), 4)
+        except Exception:
+            return 0.5
 
     def get_user_shares(self, obj):
         request = self.context.get("request")
@@ -392,15 +394,13 @@ class MarketOptionSerializer(serializers.ModelSerializer):
         if not position:
             return 0
 
-        return (
-            position.yes_shares
-            if obj.text.lower() == "yes"
-            else position.no_shares
-        )
+        return round(position.shares_for(obj), 4)
 
 
 class PollResolveSerializer(serializers.Serializer):
     winning_option_id = serializers.IntegerField()
+    criteria_confirmed = serializers.BooleanField(default=False)
+
 
     def validate(self, data):
         poll = self.context["poll"]
@@ -409,7 +409,12 @@ class PollResolveSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "Only open polls can be resolved."
             )
-
+        if poll.resolution_criteria:
+            confirmed = self.initial_data.get("criteria_confirmed", False)
+            if not confirmed:
+                raise serializers.ValidationError(
+                    "You must confirm that all resolution criteria have been met."
+                )
         try:
             PollOption.objects.get(
                 id=data["winning_option_id"],
@@ -496,7 +501,8 @@ class ChallengeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'creator', 'creator_username', 'opponent', 'opponent_username',
             'amount', 'question', 'status', 'expires_at', 'winner', 'created_at',
-            'is_creator', 'is_opponent', 'creator_choice', 'creator_choice_display', 'opponent_choice'
+            'is_creator', 'is_opponent', 'creator_choice', 'creator_choice_display',
+            'opponent_choice', 'is_open', 'poll',
         ]
         read_only_fields = ['creator', 'status', 'winner']
 
@@ -509,17 +515,32 @@ class ChallengeSerializer(serializers.ModelSerializer):
         return request and request.user == obj.opponent
 
     def get_opponent_choice(self, obj):
-        return 'no' if obj.creator_choice == 'yes' else 'yes'
+        options = list(obj.poll.options.values_list("text", flat=True)) if obj.poll else []
+        if len(options) == 2:
+            return next((o for o in options if o.lower() != obj.creator_choice.lower()), None)
+        return None
 
 class ChallengeCreateSerializer(serializers.ModelSerializer):
-    opponent_username = serializers.CharField(write_only=True)
-    creator_choice = serializers.ChoiceField(choices=['yes', 'no'])
+    opponent_username = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    creator_choice = serializers.CharField(max_length=255)
 
     class Meta:
         model = Challenge
-        fields = ['opponent_username', 'amount', 'question', 'expires_at', 'creator_choice']
+        fields = ['opponent_username', 'amount', 'question', 'expires_at', 'creator_choice', 'is_open', 'poll']
+
+    def validate(self, data):
+        is_open = data.get('is_open', False)
+        opponent_username = data.get('opponent_username', '').strip()
+        
+        if not is_open and not opponent_username:
+            raise serializers.ValidationError("Provide an opponent username or create an open challenge.")
+        if is_open and opponent_username:
+            raise serializers.ValidationError("Open challenges cannot have a specific opponent.")
+        return data
 
     def validate_opponent_username(self, value):
+        if not value:
+            return None
         try:
             opponent = User.objects.get(username=value)
         except User.DoesNotExist:
@@ -529,7 +550,8 @@ class ChallengeCreateSerializer(serializers.ModelSerializer):
         return opponent
 
     def create(self, validated_data):
-        opponent = validated_data.pop('opponent_username')
-        validated_data['opponent'] = opponent
+        opponent = validated_data.pop('opponent_username', None)
         validated_data['creator'] = self.context['request'].user
+        if opponent:
+            validated_data['opponent'] = opponent
         return Challenge.objects.create(**validated_data)

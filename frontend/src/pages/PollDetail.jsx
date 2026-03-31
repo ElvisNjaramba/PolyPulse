@@ -22,7 +22,39 @@ const PollDetail = () => {
   const [success, setSuccess] = useState("");
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
+  const [timeLeft, setTimeLeft] = useState("");
+  const [pollChallenges, setPollChallenges] = useState([]);
+const [challengeTab, setChallengeTab] = useState("open");
+
+
   const commentsEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!poll) return;
+    const update = () => {
+      const diff = new Date(poll.closes_at) - new Date();
+      if (diff <= 0) { setTimeLeft(""); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(`${h}h ${m}m ${s}s`);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [poll]);
+
+
+  const fetchPollChallenges = async () => {
+  try {
+    const res = await api.get(`/challenges/public/?poll=${id}`);
+    // filter client-side by status
+    setPollChallenges(res.data.filter(c => c.poll == id));
+  } catch (err) {
+    console.error("Failed to fetch challenges", err);
+  }
+};
+
 
   const fetchPoll = async () => {
     try {
@@ -111,6 +143,7 @@ const PollDetail = () => {
     fetchPoll();
     loadComments();
     fetchCurrentUser();
+    fetchPollChallenges();
   }, [id]);
 
 
@@ -155,20 +188,27 @@ const PollDetail = () => {
             </div>
 
             {/* ── Manage Poll button — only visible to creator ── */}
-            {isCreator && (
-              <button
-                onClick={() => navigate("/manage/polls")}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
-                  bg-indigo-500/15 border border-indigo-400/30 text-indigo-300
-                  hover:bg-indigo-500/30 hover:border-indigo-400/60 hover:text-white
-                  transition-all duration-150 whitespace-nowrap"
-              >
-                <span>⚙️</span> Manage Poll
-              </button>
-            )}
+{isCreator && (
+  <button
+    onClick={() => navigate("/manage/polls")}
+    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
+      bg-indigo-500/15 border border-indigo-400/30 text-indigo-300
+      hover:bg-indigo-500/30 hover:border-indigo-400/60 hover:text-white
+      transition-all duration-150 whitespace-nowrap"
+  >
+    <span>{timeLeft ? "🔒" : "⚙️"}</span>
+    {timeLeft ? `Resolve locked (${timeLeft})` : "Manage Poll"}
+  </button>
+)}
           </div>
 
           <p className="text-gray-400">{poll.description}</p>
+            {poll.resolution_criteria && (
+              <div className="mt-3 p-4 rounded-xl bg-yellow-500/10 border border-yellow-400/20">
+                <p className="text-yellow-400 text-sm font-semibold mb-1">📋 Resolution Criteria</p>
+                <p className="text-gray-300 text-sm whitespace-pre-line">{poll.resolution_criteria}</p>
+              </div>
+            )}
           <div className="flex flex-wrap gap-6">
             <div className="flex items-center gap-2 text-gray-300">
               <span>💰</span> <span>Total Pool:</span> <span className="font-semibold text-white">Kes {poll.total_pool}</span>
@@ -202,6 +242,82 @@ const PollDetail = () => {
             </ErrorBoundary>
           </div>
         </div>
+
+
+{/* Bet Beshte Section */}
+<div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 space-y-4">
+  <div className="flex items-center justify-between flex-wrap gap-3">
+    <h2 className="text-xl font-semibold text-white">⚔️ Bet Beshte Challenges</h2>
+    <button
+      onClick={() => navigate(`/challenges/new?poll=${poll.id}&question=${encodeURIComponent(poll.title)}`)}
+      className="px-4 py-2 text-sm bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-lg transition-all"
+    >
+      + Create Challenge
+    </button>
+  </div>
+
+  {/* Tabs */}
+  <div className="flex gap-2 border-b border-white/10 pb-2">
+    {[
+      { key: "open", label: "🟡 Open" },
+      { key: "accepted", label: "🟢 Ongoing" },
+      { key: "resolved", label: "✅ Resolved" },
+    ].map(tab => (
+      <button
+        key={tab.key}
+        onClick={() => setChallengeTab(tab.key)}
+        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+          challengeTab === tab.key
+            ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+            : "text-gray-400 hover:text-white"
+        }`}
+      >
+        {tab.label}
+      </button>
+    ))}
+  </div>
+
+  {/* Challenge Cards */}
+  <div className="space-y-3">
+    {pollChallenges.filter(c => c.status === challengeTab).length === 0 ? (
+      <p className="text-gray-500 text-sm text-center py-6">No {challengeTab} challenges for this market yet.</p>
+    ) : (
+      pollChallenges.filter(c => c.status === challengeTab).map(c => (
+        <div key={c.id} className="flex items-center justify-between gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="flex-1 min-w-0">
+            <p className="text-white text-sm font-medium truncate">{c.question}</p>
+            <p className="text-gray-400 text-xs mt-1">
+              {c.creator_username} ({c.creator_choice_display}) · Kes {c.amount}
+              {c.is_open && c.status === "pending" && (
+                <span className="ml-2 px-1.5 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded text-xs">Open</span>
+              )}
+            </p>
+          </div>
+          {c.is_open && c.status === "pending" && currentUser && currentUser.username !== c.creator_username && (
+            <button
+              onClick={async () => {
+                try {
+                  await api.post(`/challenges/${c.id}/accept-open/`);
+                  fetchPollChallenges();
+                } catch (err) {
+                  setError(err.response?.data?.error || "Failed to accept challenge");
+                }
+              }}
+              className="flex-shrink-0 px-3 py-1.5 text-xs bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg hover:bg-green-500/20 transition-all"
+            >
+              Accept
+            </button>
+          )}
+          {c.status === "resolved" && c.winner && (
+            <span className="text-xs text-blue-400 flex-shrink-0">
+              🏆 {c.winner === c.creator ? c.creator_username : c.opponent_username}
+            </span>
+          )}
+        </div>
+      ))
+    )}
+  </div>
+</div>
 
         {/* Options */}
         <div className="flex flex-wrap gap-5 justify-center">
@@ -247,6 +363,19 @@ const PollDetail = () => {
                     <span>Avg Price:</span>
                     <span className="text-white font-semibold">Kes {opt.avg_price.toFixed(4)}</span>
                   </div>
+                  {timeLeft && (
+  <div className="flex items-center gap-2 text-gray-300">
+    <span>⏱️</span>
+    <span>Closes in:</span>
+    <span className="font-semibold text-yellow-400 font-mono">{timeLeft}</span>
+  </div>
+)}
+{!timeLeft && poll.status === "closed" && (
+  <div className="flex items-center gap-2 text-gray-300">
+    <span>🔒</span>
+    <span className="text-red-400 font-semibold">Market Closed</span>
+  </div>
+)}
                 </div>
 
                 {/* P/L */}

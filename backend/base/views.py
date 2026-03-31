@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.utils import timezone
+from datetime import timedelta
 from rest_framework.views import APIView
 
 from wallet.services import apply_wallet_transaction
@@ -30,12 +31,14 @@ class PollCreateView(generics.CreateAPIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        serializer = self.get_serializer(
-            data=request.data,
-            context={"request": request}
-        )
-        serializer.is_valid(raise_exception=True)
+        if not request.data.get("is_free", False) and not request.user.is_staff and not request.user.is_superuser:
+            return Response(
+                {"error": "Real-money market creation is currently restricted. Only free markets can be created at this time."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
+        serializer = self.get_serializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
         poll = serializer.save()
 
         if not request.user.is_staff and not request.user.is_superuser:
@@ -47,7 +50,6 @@ class PollCreateView(generics.CreateAPIView):
             {"message": "Poll created successfully", "poll_id": poll.id},
             status=status.HTTP_201_CREATED,
         )
-
 
 class PollListView(generics.ListAPIView):
     serializer_class = PollListSerializer
@@ -111,6 +113,14 @@ class PollResolveView(APIView):
     @transaction.atomic
     def post(self, request, poll_id):
         poll = Poll.objects.select_for_update().get(id=poll_id)
+        if timezone.now() < poll.closes_at:
+            time_left = poll.closes_at - timezone.now()
+            hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+            minutes = remainder // 60
+            return Response(
+                {"error": f"Market cannot be resolved yet. It closes in {hours}h {minutes}m."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         self.check_object_permissions(request, poll)
 
         serializer = PollResolveSerializer(
@@ -148,6 +158,41 @@ class PollResolveView(APIView):
                 notification_type='bet_won',
                 message=f'You won Kes {payout} on "{poll.title}"'
             )
+
+        # Update streaks and accuracy for all bettors on this poll
+        all_bettors = (
+            Bet.objects
+            .filter(poll=poll)
+            .select_related("user__profile")
+            .values_list("user_id", flat=True)
+            .distinct()
+        )
+        for user_id in all_bettors:
+            profile = Poll.objects.get(id=poll_id)  # already fetched — use bet.user.profile below
+            break  # placeholder — real loop below
+
+        # Update streaks and prediction accuracy for every bettor on this poll
+        bettor_profiles = {
+            b.user_id: b.user.profile
+            for b in Bet.objects.filter(poll=poll).select_related("user__profile")
+        }
+        winner_ids = set(
+            Bet.objects.filter(poll=poll, option=poll.winning_option)
+            .values_list("user_id", flat=True)
+            .distinct()
+        )
+        for user_id, profile in bettor_profiles.items():
+            profile.total_predictions += 1
+            if user_id in winner_ids:
+                profile.current_streak += 1
+                profile.best_streak = max(profile.best_streak, profile.current_streak)
+                profile.correct_predictions += 1
+            else:
+                profile.current_streak = 0
+            profile.save(update_fields=[
+                "total_predictions", "correct_predictions",
+                "current_streak", "best_streak",
+            ])
 
         return Response({"message": "Poll resolved successfully"})
 
@@ -205,16 +250,89 @@ class PollCancelView(APIView):
 
 class LeaderboardView(APIView):
     def get(self, request):
-        leaderboard = (
+        # ── Top-10 global leaderboard ──────────────────────────────────
+        top_qs = (
             WalletTransaction.objects
             .filter(transaction_type="win")
-            .values("user__username")
+            .values("user__id", "user__username")
             .annotate(total_won=Sum("amount"))
             .order_by("-total_won")[:10]
         )
 
-        return Response(leaderboard)
-    
+        leaderboard = []
+        for rank, entry in enumerate(top_qs, 1):
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                profile = User.objects.get(id=entry["user__id"]).profile
+                total = profile.total_predictions
+                accuracy = round(profile.correct_predictions / total * 100, 1) if total else 0
+                streak = profile.current_streak
+                best_streak = profile.best_streak
+            except Exception:
+                accuracy = streak = best_streak = 0
+
+            leaderboard.append({
+                "rank": rank,
+                "username": entry["user__username"],
+                "total_won": round(entry["total_won"], 2),
+                "current_streak": streak,
+                "best_streak": best_streak,
+                "accuracy": accuracy,
+            })
+
+        # ── Requesting user's personal stats ──────────────────────────
+        my_stats = None
+        if request.user.is_authenticated:
+            # Compute global rank
+            all_ranks = (
+                WalletTransaction.objects
+                .filter(transaction_type="win")
+                .values("user__id")
+                .annotate(total_won=Sum("amount"))
+                .order_by("-total_won")
+            )
+            my_rank = next(
+                (i + 1 for i, r in enumerate(all_ranks) if r["user__id"] == request.user.id),
+                None
+            )
+            my_total = (
+                WalletTransaction.objects
+                .filter(user=request.user, transaction_type="win")
+                .aggregate(total=Sum("amount"))["total"] or 0
+            )
+
+            today = timezone.now().date()
+            yesterday = today - timedelta(days=1)
+            today_wins = (
+                WalletTransaction.objects
+                .filter(user=request.user, transaction_type="win", created_at__date=today)
+                .aggregate(total=Sum("amount"))["total"] or 0
+            )
+            yesterday_wins = (
+                WalletTransaction.objects
+                .filter(user=request.user, transaction_type="win", created_at__date=yesterday)
+                .aggregate(total=Sum("amount"))["total"] or 0
+            )
+
+            profile = request.user.profile
+            total = profile.total_predictions
+            accuracy = round(profile.correct_predictions / total * 100, 1) if total else 0
+
+            my_stats = {
+                "rank": my_rank,
+                "total_won": round(my_total, 2),
+                "current_streak": profile.current_streak,
+                "best_streak": profile.best_streak,
+                "accuracy": accuracy,
+                "today_winnings": round(today_wins, 2),
+                "yesterday_winnings": round(yesterday_wins, 2),
+                "daily_change": round(today_wins - yesterday_wins, 2),
+            }
+
+        return Response({"leaderboard": leaderboard, "my_stats": my_stats})
+        
+
 class NotificationListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -357,7 +475,7 @@ class PlaceBetView(APIView):
         )
 
         # buy() now returns (shares_issued, current_price) correctly
-        shares, price = market.buy(is_yes, amount)
+        shares, new_price = market.buy(option=option, amount=amount)
 
         Bet.objects.create(
             user=request.user,
@@ -368,21 +486,23 @@ class PlaceBetView(APIView):
         )
 
         # Update position — shares and spent tracked separately
-        if is_yes:
-            position.yes_shares += shares
-            position.yes_spent  += amount
-        else:
-            position.no_shares += shares
-            position.no_spent  += amount
+        key = str(option.id)
+        position.option_shares[key] = position.option_shares.get(key, 0.0) + shares
+        position.option_spent[key]  = position.option_spent.get(key, 0.0) + amount
+
+        # sync legacy binary columns
+        opts = list(poll.options.all())
+        if len(opts) == 2:
+            position.yes_shares = position.option_shares.get(str(opts[0].id), 0.0)
+            position.no_shares  = position.option_shares.get(str(opts[1].id), 0.0)
+            position.yes_spent  = position.option_spent.get(str(opts[0].id), 0.0)
+            position.no_spent   = position.option_spent.get(str(opts[1].id), 0.0)
 
         position.save()
 
         return Response({
             "shares":    round(shares, 4),
-            "price":     round(price, 4),
-            "new_price": round(
-                market.price_yes() if is_yes else market.price_no(), 4
-            ),
+            "new_price": round(new_price, 4),
         })
 
 class SellSharesView(APIView):
@@ -398,8 +518,7 @@ class SellSharesView(APIView):
             user=request.user, market=market
         )
 
-        is_yes = option.is_yes()
-        owned  = position.yes_shares if is_yes else position.no_shares
+        owned = position.shares_for(option)
 
         if shares <= 0 or shares > owned:
             return Response(
@@ -407,9 +526,8 @@ class SellSharesView(APIView):
                 status=400
             )
 
-        result = market.sell(is_yes, shares)
-        # ✅ Full LMSR refund — market.sell() already computes the correct payout.
-        # No deductions applied; user receives the complete market value of their shares.
+        result = market.sell(option=option, shares=shares)
+
         payout_value = float(result["refund"])
 
         if payout_value <= 0:
@@ -427,14 +545,18 @@ class SellSharesView(APIView):
         )
 
         # ✅ Reduce position — clamp spent to 0 to avoid float drift going negative
-        if is_yes:
-            avg_price = position.avg_yes_price()
-            position.yes_shares -= shares
-            position.yes_spent   = max(0, position.yes_spent - shares * avg_price)
-        else:
-            avg_price = position.avg_no_price()
-            position.no_shares -= shares
-            position.no_spent   = max(0, position.no_spent - shares * avg_price)
+        key = str(option.id)
+        avg_price = position.spent_for(option) / owned if owned else 0
+        position.option_shares[key] = max(0.0, position.option_shares.get(key, 0.0) - shares)
+        position.option_spent[key]  = max(0.0, position.option_spent.get(key, 0.0) - shares * avg_price)
+
+        # keep legacy binary columns in sync for 2-option markets
+        opts = list(market.poll.options.all())
+        if len(opts) == 2:
+            position.yes_shares = position.option_shares.get(str(opts[0].id), 0.0)
+            position.no_shares  = position.option_shares.get(str(opts[1].id), 0.0)
+            position.yes_spent  = position.option_spent.get(str(opts[0].id), 0.0)
+            position.no_spent   = position.option_spent.get(str(opts[1].id), 0.0)
 
         position.save()
 
@@ -500,7 +622,15 @@ def user_positions(request):
 @permission_classes([IsAuthenticated])
 def profile_view(request):
     user = request.user
-
+    profile = user.profile
+ 
+    # Reset stale counter so the frontend sees the correct value
+    today = timezone.now().date()
+    if profile.last_poll_created_date != today:
+        profile.polls_created_today = 0
+        profile.last_poll_created_date = today
+        profile.save(update_fields=["polls_created_today", "last_poll_created_date"])
+ 
     open_positions = (
         Bet.objects
         .filter(user=user)
@@ -509,13 +639,15 @@ def profile_view(request):
         .filter(total_shares__gt=0)
         .count()
     )
-
+ 
     return Response({
         "username": user.username,
         "email": user.email,
-        "balance": user.profile.balance,
+        "balance": profile.balance,
         "open_positions": open_positions,
+        "polls_created_today": profile.polls_created_today,   # ← NEW: used by CreatePoll counter
     })
+
 
 class MarketPriceHistoryView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -567,8 +699,75 @@ class ChallengeListCreateView(generics.ListCreateAPIView):
         return ChallengeSerializer
 
     def perform_create(self, serializer):
-        serializer.save(creator=self.request.user)
+        challenge = serializer.save(creator=self.request.user)
 
+        if not challenge.is_open and challenge.opponent:
+            Notification.objects.create(
+                user=challenge.opponent,
+                actor=self.request.user,
+                notification_type='challenge_received',
+                message=f'{self.request.user.username} challenged you: "{challenge.question}" for Kes {challenge.amount}'
+            )
+
+        if challenge.is_open:
+            # Notify participants of the linked poll if provided
+            from .models import Bet
+            poll_filter = {'poll': challenge.poll} if challenge.poll else {'poll__title__icontains': challenge.question[:20]}
+            participants = (
+                Bet.objects
+                .filter(**poll_filter)
+                .exclude(user=self.request.user)
+                .values_list('user', flat=True)
+                .distinct()
+            )
+            for user_id in participants:
+                Notification.objects.create(
+                    user_id=user_id,
+                    actor=self.request.user,
+                    notification_type='market_challenge',
+                    message=f'Open challenge on a market you traded: "{challenge.question}" – Kes {challenge.amount}. Accept it!'
+                )
+
+class AcceptOpenChallengeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        challenge = get_object_or_404(Challenge, pk=pk, is_open=True)
+        
+        if challenge.creator == request.user:
+            return Response({'error': 'Cannot accept your own challenge'}, status=400)
+        if challenge.status != 'pending':
+            return Response({'error': 'Challenge no longer available'}, status=400)
+        if challenge.opponent:
+            return Response({'error': 'Challenge already taken'}, status=400)
+        if timezone.now() > challenge.expires_at:
+            challenge.status = 'expired'
+            challenge.save()
+            return Response({'error': 'Challenge expired'}, status=400)
+
+        amount_float = float(challenge.amount)
+        if challenge.creator.profile.balance < amount_float or request.user.profile.balance < amount_float:
+            return Response({'error': 'Insufficient balance'}, status=400)
+
+        challenge.creator.profile.balance -= amount_float
+        challenge.creator.profile.save()
+        request.user.profile.balance -= amount_float
+        request.user.profile.save()
+
+        challenge.opponent = request.user
+        challenge.status = 'accepted'
+        challenge.is_open = False
+        challenge.save()
+
+        Notification.objects.create(
+            user=challenge.creator,
+            actor=request.user,
+            notification_type='challenge_accepted',
+            message=f'{request.user.username} accepted your open challenge: "{challenge.question}"'
+        )
+        return Response({'message': 'Challenge accepted'})
+        
 class ChallengeDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
     queryset = Challenge.objects.all()
@@ -677,9 +876,11 @@ class ChallengeCancelView(APIView):
             challenge.opponent.profile.balance += challenge.amount
             challenge.opponent.profile.save()
 
+        original_status = challenge.status
         challenge.status = 'cancelled'
         challenge.save()
-        if challenge.status == 'accepted':
+
+        if original_status == 'accepted':
             Notification.objects.create(
                 user=challenge.opponent,
                 actor=request.user,
@@ -687,3 +888,17 @@ class ChallengeCancelView(APIView):
                 message=f'{request.user.username} cancelled the challenge "{challenge.question}" – funds refunded'
             )
         return Response({'message': 'Challenge cancelled'})
+
+
+class PublicChallengeListView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ChallengeSerializer
+
+    def get_queryset(self):
+        qs = Challenge.objects.order_by('-created_at')
+        poll_id = self.request.query_params.get('poll')
+        if poll_id:
+            qs = qs.filter(poll_id=poll_id)
+        else:
+            qs = qs.filter(is_open=True)
+        return qs
