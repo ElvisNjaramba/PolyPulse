@@ -28,7 +28,7 @@ const MarketChart = ({ pollId }) => {
     const fetchHistory = async () => {
       try {
         const res = await fetch(
-          `http://127.0.0.1:8000/api/polls/${pollId}/chart/`
+          `https://api.polypulse.co.ke/api/polls/${pollId}/chart/`
         );
 
         if (!res.ok) throw new Error("Failed response");
@@ -53,7 +53,7 @@ const MarketChart = ({ pollId }) => {
     if (!pollId) return;
 
     const ws = new WebSocket(
-      `ws://127.0.0.1:8000/ws/market/${pollId}/`
+      `wss://api.polypulse.co.ke/ws/market/${pollId}/`
     );
 
     ws.onopen = () => console.log("WS connected");
@@ -79,111 +79,121 @@ const MarketChart = ({ pollId }) => {
   }, [pollId]);
 
   // Prepare chart data
-  const chartData = {
-    datasets: [
-      {
-        label: "YES Price",
-        data: historicalData.map(d => ({
-          x: d.timestamp,
-          y: d.yes_price ?? 0,
-        })),
-        borderColor: "#00e0ff",
-        backgroundColor: "rgba(0, 224, 255, 0.1)",
-        tension: 0.2,
-        fill: false,
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        pointBackgroundColor: "#00e0ff",
-        pointBorderColor: "#0b0f19",
-        pointBorderWidth: 2,
-      },
-      {
-        label: "NO Price",
-        data: historicalData.map(d => ({
-          x: d.timestamp,
-          y: d.no_price ?? 0,
-        })),
-        borderColor: "#ff6384",
-        backgroundColor: "rgba(255, 99, 132, 0.1)",
-        tension: 0.2,
-        fill: false,
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        pointBackgroundColor: "#ff6384",
-        pointBorderColor: "#0b0f19",
-        pointBorderWidth: 2,
-      },
-    ],
-  };
+const chartData = {
+  datasets: [
+    {
+      label: "YES Price",
+      data: historicalData.map((d) => ({
+        x: d.timestamp,
+        y: Math.min(1, Math.max(0, d.yes_price ?? 0.5)),
+      })),
+      borderColor: "#00e0ff",
+      backgroundColor: "rgba(0, 224, 255, 0.08)",
+      tension: 0.3,
+      fill: true,
+      borderWidth: 2.5,
+      pointRadius: 0,
+      pointHoverRadius: 5,
+      pointBackgroundColor: "#00e0ff",
+      pointBorderColor: "#0b0f19",
+      pointBorderWidth: 2,
+    },
+    {
+      label: "NO Price",
+      data: historicalData.map((d) => ({
+        x: d.timestamp,
+        y: Math.min(1, Math.max(0, d.no_price ?? 0.5)),
+      })),
+      borderColor: "#f97316",   // orange instead of red/pink — more visually distinct
+      backgroundColor: "rgba(249, 115, 22, 0.08)",
+      tension: 0.3,
+      fill: true,
+      borderWidth: 2.5,
+      pointRadius: 0,
+      pointHoverRadius: 5,
+      pointBackgroundColor: "#f97316",
+      pointBorderColor: "#0b0f19",
+      pointBorderWidth: 2,
+    },
+  ],
+};
 
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 0 },
-    scales: {
-      x: {
-        type: "time",
-        adapters: {
-          date: {}
-        },
-        time: {
-          displayFormats: {
-            second: "HH:mm:ss",
-            minute: "HH:mm",
-            hour: "MMM d HH:mm",
-          }
-        }
-      }
-    },
-    plugins: {
-      tooltip: {
-        mode: "index",
-        intersect: false,
-        backgroundColor: "rgba(11,15,25,0.95)",
-        titleColor: "#a0aec0",
-        titleFont: { size: 12 },
-        bodyColor: "#ffffff",
-        bodyFont: { size: 13 },
-        borderColor: "rgba(0,224,255,0.3)",
-        borderWidth: 1,
-        cornerRadius: 8,
-        padding: 12,
-        callbacks: {
-          label: (ctx) => `${ctx.dataset.label}: KES ${ctx.parsed.y.toFixed(4)}`,
-          title: (ctx) =>
-            new Date(ctx[0].parsed.x).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            }),
+
+const options = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 300 },
+  scales: {
+    x: {
+      type: "time",
+      adapters: { date: {} },
+      time: {
+        displayFormats: {
+          second: "HH:mm:ss",
+          minute: "HH:mm",
+          hour: "MMM d HH:mm",
         },
       },
-      legend: { display: true, labels: { color: "#9ca3af" } },
+      grid: { color: "rgba(255,255,255,0.04)" },
+      ticks: { color: "#6b7280", maxTicksLimit: 6 },
     },
-    interaction: { mode: "nearest", intersect: false },
-    elements: { line: { cubicInterpolationMode: "monotone" } },
-  };
+    y: {
+      min: 0,
+      max: 1,
+      grid: { color: "rgba(255,255,255,0.04)" },
+      ticks: {
+        color: "#6b7280",
+        callback: (v) => `${(v * 100).toFixed(0)}¢`,
+        stepSize: 0.1,
+      },
+    },
+  },
+  plugins: {
+    tooltip: {
+      mode: "index",
+      intersect: false,
+      backgroundColor: "rgba(11,15,25,0.95)",
+      titleColor: "#a0aec0",
+      bodyColor: "#ffffff",
+      borderColor: "rgba(0,224,255,0.3)",
+      borderWidth: 1,
+      cornerRadius: 8,
+      padding: 12,
+      callbacks: {
+        label: (ctx) => `${ctx.dataset.label}: ${(ctx.parsed.y * 100).toFixed(1)}¢`,
+        title: (ctx) =>
+          new Date(ctx[0].parsed.x).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+      },
+    },
+    legend: { display: true, labels: { color: "#9ca3af" } },
+  },
+  interaction: { mode: "nearest", intersect: false },
+  elements: { line: { cubicInterpolationMode: "monotone" } },
+};
 
   // Gradient fill (optional – you can keep only one filled or remove)
-  useEffect(() => {
-    if (chartRef.current && historicalData.length > 0) {
-      const chart = chartRef.current;
-      const ctx = chart.ctx;
-      const gradientYes = ctx.createLinearGradient(0, 0, 0, 400);
-      gradientYes.addColorStop(0, "rgba(0,224,255,0.3)");
-      gradientYes.addColorStop(1, "rgba(0,224,255,0)");
-      chart.data.datasets[0].backgroundColor = gradientYes;
+useEffect(() => {
+  if (chartRef.current && historicalData.length > 0) {
+    const chart = chartRef.current;
+    const ctx = chart.ctx;
 
-      const gradientNo = ctx.createLinearGradient(0, 0, 0, 400);
-      gradientNo.addColorStop(0, "rgba(255,99,132,0.3)");
-      gradientNo.addColorStop(1, "rgba(255,99,132,0)");
-      chart.data.datasets[1].backgroundColor = gradientNo;
+    const gradientYes = ctx.createLinearGradient(0, 0, 0, 320);
+    gradientYes.addColorStop(0, "rgba(0,224,255,0.25)");
+    gradientYes.addColorStop(1, "rgba(0,224,255,0)");
+    chart.data.datasets[0].backgroundColor = gradientYes;
 
-      chart.update("none");
-    }
-  }, [historicalData]);
+    const gradientNo = ctx.createLinearGradient(0, 0, 0, 320);
+    gradientNo.addColorStop(0, "rgba(249,115,22,0.25)");
+    gradientNo.addColorStop(1, "rgba(249,115,22,0)");
+    chart.data.datasets[1].backgroundColor = gradientNo;
+
+    chart.update("none");
+  }
+}, [historicalData]);
 
   return (
     <div className="relative w-full h-80">
@@ -207,7 +217,7 @@ const MarketChart = ({ pollId }) => {
             </div>
             <div className="flex items-center gap-2 px-3 py-1 bg-gray-900/80 backdrop-blur-sm rounded-lg border border-gray-700/50">
               <span className="text-xs text-gray-400">NO:</span>
-              <span className="text-sm font-bold text-rose-400">
+              <span className="text-sm font-bold text-orange-400">   {/* was rose-400 */}
                 KES {historicalData[historicalData.length - 1]?.no_price?.toFixed(4) || "0.0000"}
               </span>
             </div>
@@ -227,7 +237,7 @@ const MarketChart = ({ pollId }) => {
               <span className="text-xs text-gray-400">YES</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-rose-400" />
+              <div className="w-2 h-2 rounded-full bg-orange-400" /> 
               <span className="text-xs text-gray-400">NO</span>
             </div>
             {historicalData.length > 1 && (

@@ -324,11 +324,23 @@ class Challenge(models.Model):
     # ]
 
     creator  = models.ForeignKey(User, on_delete=models.CASCADE, related_name='challenges_created')
-    opponent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='challenges_received')
+    opponent = models.ForeignKey(
+    User, 
+    on_delete=models.CASCADE, 
+    related_name='challenges_received',
+    null=True,
+    blank=True
+)
     creator_choice = models.CharField(
         max_length=255,
         help_text="The option text the creator is backing"
     )
+
+    resolution_criteria = models.TextField(
+    blank=True,
+    help_text="Conditions that must be met before this challenge can be resolved."
+)
+    resolved_at = models.DateTimeField(null=True, blank=True)
     amount   = models.DecimalField(max_digits=10, decimal_places=2)
     question = models.CharField(max_length=255)
     is_open = models.BooleanField(default=False, help_text="Open challenge anyone can accept")

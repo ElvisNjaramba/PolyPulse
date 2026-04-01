@@ -562,9 +562,7 @@ class SellSharesView(APIView):
 
         return Response({
             "payout":    round(payout_value, 4),
-            "new_price": round(
-                market.price_yes() if is_yes else market.price_no(), 4
-            ),
+            "new_price": round(market.price_for_option(option), 4),
         })
 
 from rest_framework.decorators import api_view, permission_classes
@@ -598,7 +596,7 @@ def user_positions(request):
         # Pull live price from the related market
         option = PollOption.objects.get(id=b["option__id"])
         market = option.poll.market
-        current_price = market.price_yes() if option.is_yes() else market.price_no()
+        current_price = market.price_for_option(option)
 
         # Calculate PnL
         market_value = b["shares"] * current_price
@@ -690,8 +688,10 @@ class ChallengeListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         return Challenge.objects.filter(
-            Q(creator=user) | Q(opponent=user)
-        ).order_by('-created_at')
+            Q(creator=user) |
+            Q(opponent=user) |
+            Q(is_open=True, status='pending') 
+        ).distinct().order_by('-created_at')
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -699,7 +699,25 @@ class ChallengeListCreateView(generics.ListCreateAPIView):
         return ChallengeSerializer
 
     def perform_create(self, serializer):
-        challenge = serializer.save(creator=self.request.user)
+        poll_id = self.request.data.get('poll')
+        
+        if poll_id:
+            from .models import Poll
+            from django.utils import timezone
+            try:
+                poll = Poll.objects.get(id=poll_id)
+                if poll.status != 'open':
+                    from rest_framework.exceptions import ValidationError
+                    raise ValidationError(f"Cannot create a challenge on a {poll.status} market.")
+                if not poll.can_accept_bets():
+                    from rest_framework.exceptions import ValidationError
+                    raise ValidationError("This market has closed and is no longer accepting challenges.")
+            except Poll.DoesNotExist:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("Poll not found.")
+
+        # ✅ Don't pass creator here — ChallengeCreateSerializer.create() handles it
+        challenge = serializer.save()
 
         if not challenge.is_open and challenge.opponent:
             Notification.objects.create(
@@ -710,7 +728,6 @@ class ChallengeListCreateView(generics.ListCreateAPIView):
             )
 
         if challenge.is_open:
-            # Notify participants of the linked poll if provided
             from .models import Bet
             poll_filter = {'poll': challenge.poll} if challenge.poll else {'poll__title__icontains': challenge.question[:20]}
             participants = (
@@ -818,46 +835,68 @@ class ChallengeResolveView(APIView):
     @transaction.atomic
     def post(self, request, pk):
         challenge = get_object_or_404(Challenge, pk=pk)
+
         if challenge.creator != request.user and challenge.opponent != request.user:
             return Response({'error': 'Not your challenge'}, status=403)
+
         if challenge.status != 'accepted':
             return Response({'error': 'Challenge not accepted'}, status=400)
 
-        winning_outcome = request.data.get('winning_outcome')
-        if winning_outcome not in ['yes', 'no']:
-            return Response({'error': 'Invalid outcome'}, status=400)
-
-        if challenge.creator_choice == winning_outcome:
-            winner = challenge.creator
+        # ⏰ Time gate — must be past expires_at
+        if challenge.poll:
+            deadline = challenge.poll.closes_at
+            if challenge.poll.status not in ['closed', 'resolved']:
+                time_left = deadline - timezone.now()
+                hours, remainder = divmod(int(max(time_left.total_seconds(), 0)), 3600)
+                minutes = remainder // 60
+                return Response(
+                    {'error': f'Challenge can only be resolved after the poll closes. Closes in {hours}h {minutes}m.'},
+                    status=403
+                )
         else:
-            winner = challenge.opponent
+            if timezone.now() < challenge.expires_at:
+                time_left = challenge.expires_at - timezone.now()
+                hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+                minutes = remainder // 60
+                return Response(
+                    {'error': f'Challenge cannot be resolved yet. Expires in {hours}h {minutes}m.'},
+                    status=403
+                )
+        
+        if challenge.resolution_criteria:
+            criteria_confirmed = request.data.get('criteria_confirmed', False)
+            if not criteria_confirmed:
+                return Response(
+                    {'error': 'You must confirm that all resolution criteria have been met.'},
+                    status=400
+                )
+
+        winning_outcome = request.data.get('winning_outcome', '').strip().lower()
+        if not winning_outcome:
+            return Response({'error': 'winning_outcome is required'}, status=400)
+
+        creator_choice_lower = challenge.creator_choice.strip().lower()
+        winner = challenge.creator if winning_outcome == creator_choice_lower else challenge.opponent
 
         payout = float(challenge.amount) * 2
-
         winner.profile.balance += payout
         winner.profile.save()
 
         challenge.status = 'resolved'
         challenge.winner = winner
+        challenge.resolved_at = timezone.now()
         challenge.save()
 
         Notification.objects.create(
-            user=winner,
-            actor=None,
-            notification_type='challenge_won',
+            user=winner, actor=None, notification_type='challenge_won',
             message=f'You won the challenge "{challenge.question}" and received Kes {payout}'
         )
-
         loser = challenge.opponent if winner == challenge.creator else challenge.creator
         Notification.objects.create(
-            user=loser,
-            actor=None,
-            notification_type='challenge_lost',
+            user=loser, actor=None, notification_type='challenge_lost',
             message=f'You lost the challenge "{challenge.question}"'
         )
-
         return Response({'message': 'Challenge resolved', 'winner': winner.username})
-
 
 class ChallengeCancelView(APIView):
     permission_classes = [IsAuthenticated]
@@ -897,8 +936,14 @@ class PublicChallengeListView(generics.ListAPIView):
     def get_queryset(self):
         qs = Challenge.objects.order_by('-created_at')
         poll_id = self.request.query_params.get('poll')
+        status_filter = self.request.query_params.get('status')
+
         if poll_id:
             qs = qs.filter(poll_id=poll_id)
         else:
-            qs = qs.filter(is_open=True)
+            qs = qs.filter(poll__isnull=True)
+
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+
         return qs

@@ -62,24 +62,26 @@ const Navbar = ({ onCollapse }) => {
   };
 
   // Main navigation items (desktop sidebar)
-  const navItems = [
-    { path: "/dashboard", label: "Dashboard", icon: "🏠" },
-    { path: "/polls", label: "Polls", icon: "📊" },
-    { path: "/positions", label: "Positions", icon: "📈" },
-    { path: "/challenges", label: "Bet-Beshte", icon: "⚔️" },
-    { path: "/wallet", label: "Wallet", icon: "💰" },
-    { path: "/profile", label: "Profile", icon: "👤" },
-  ];
+const navItems = [
+  { path: "/dashboard", label: "Dashboard", icon: "🏠" },
+  { path: "/polls", label: "Polls", icon: "📊" },
+  { path: "/positions", label: "Positions", icon: "📈" },
+  { path: "/challenges", label: "Bet-Beshte", icon: "⚔️" },
+  { path: "/wallet", label: "Wallet", icon: "💰" },
+  { path: "/leaderboard", label: "Leaderboard", icon: "🏆" },
+  { path: "/profile", label: "Profile", icon: "👤" },
+];
 
   // Mobile dock items – now always includes "Manage"
-  const dockItems = [
-    { path: "/dashboard", icon: "🏠", label: "Dashboard" },
-    { path: "/polls", icon: "📊", label: "Polls" },
-    { path: "/positions", icon: "📈", label: "Positions" },
-    { path: "/challenges", icon: "⚔️", label: "Bet-Beshte" },
-    { path: "/wallet", icon: "💰", label: "Wallet" },
-    { path: "/manage/polls", icon: "⚙️", label: "Manage" },
-  ];
+const dockItems = [
+  { path: "/dashboard", icon: "🏠", label: "Home" },
+  { path: "/polls", icon: "📊", label: "Polls" },
+  { path: "/positions", icon: "📈", label: "Positions" },
+  { path: "/challenges", icon: "⚔️", label: "Beshte" },
+  { path: "/leaderboard", icon: "🏆", label: "Ranks" },   // REPLACES wallet
+  { path: "/wallet", icon: "💰", label: "Wallet" },
+  { path: "/manage/polls", icon: "⚙️", label: "Manage" },
+];
 
   const isActive = (path) => location.pathname === path;
 
@@ -169,52 +171,47 @@ const Navbar = ({ onCollapse }) => {
         </nav>
 
         {/* Bottom Dock */}
-        {user && (
-          <div
-            className={`fixed bottom-0 left-0 right-0 z-30 transition-transform duration-300 ${
-              dockVisible ? "translate-y-0" : "translate-y-20"
-            }`}
-          >
-            <div className="relative mx-2 mb-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-cyan-500 scrollbar-track-gray-800">
-              <div className="flex gap-1 min-w-max px-1">
-                {dockItems.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`flex flex-col items-center p-2 rounded-xl transition-all ${
-                      isActive(item.path)
-                        ? "bg-gradient-to-b from-cyan-500/20 to-transparent"
-                        : "hover:bg-white/5"
-                    }`}
-                  >
-                    <div
-                      className={`relative p-2.5 rounded-lg mb-1 transition-all ${
-                        isActive(item.path)
-                          ? "bg-gradient-to-br from-cyan-400 to-blue-500 text-black"
-                          : "text-gray-400"
-                      }`}
-                    >
-                      <span className="text-xl">{item.icon}</span>
-                      {isActive(item.path) && (
-                        <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-cyan-300 rounded-full animate-pulse" />
-                      )}
-                    </div>
-                    <span
-                      className={`text-[10px] font-medium ${
-                        isActive(item.path) ? "text-cyan-400" : "text-gray-400"
-                      }`}
-                    >
-                      {item.label}
-                    </span>
-                  </Link>
-                ))}
+{user && (
+  <div
+    className={`fixed bottom-0 left-0 right-0 z-30 transition-transform duration-300 ${
+      dockVisible ? "translate-y-0" : "translate-y-full"
+    }`}
+  >
+    <div className="mx-3 mb-3">
+      <div className="bg-[#0b0f19]/90 backdrop-blur-xl border border-white/10 rounded-2xl px-2 py-1 shadow-2xl">
+        <div className="flex items-center justify-around overflow-x-auto scrollbar-none gap-0.5">
+          {dockItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className="flex flex-col items-center py-2 px-2.5 rounded-xl transition-all min-w-[52px]"
+            >
+              <div
+                className={`w-10 h-10 flex items-center justify-center rounded-xl mb-0.5 transition-all ${
+                  isActive(item.path)
+                    ? "bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/30"
+                    : "bg-white/5"
+                }`}
+              >
+                <span className="text-lg leading-none">{item.icon}</span>
               </div>
-            </div>
-          </div>
-        )}
+              <span
+                className={`text-[9px] font-medium leading-tight ${
+                  isActive(item.path) ? "text-cyan-400" : "text-gray-500"
+                }`}
+              >
+                {item.label}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
         {/* Spacer for dock */}
-        {user && <div className="h-24" />}
+{user && <div className="h-[76px]" />}
       </>
     );
   }

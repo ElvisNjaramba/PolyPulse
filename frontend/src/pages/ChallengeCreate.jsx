@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams} from "react-router-dom";
 import api from "../api/axios";
 
@@ -16,18 +16,34 @@ const [formData, setFormData] = useState({
   creator_choice: "yes",
   is_open: searchParams.get("poll") ? true : false,
   poll: searchParams.get("poll") || "",
+  resolution_criteria: "",   
 });
 
 useEffect(() => {
   const pollId = searchParams.get("poll");
   if (!pollId) return;
+
   api.get(`/polls/${pollId}/`)
     .then(res => {
-      const opts = res.data.options?.map(o => o.text) || [];
+      const poll = res.data;
+
+      if (poll.status !== 'open' || !poll.can_accept_bets) {
+        setError(`This market is ${poll.status} and no longer accepts challenges.`);
+        setFormData(prev => ({ ...prev, _pollClosed: true }));
+        return;
+      }
+
+      const opts = poll.options?.map(o => o.text) || [];
       setPollOptions(opts);
-      // pre-select first option
       if (opts.length > 0) {
-        setFormData(prev => ({ ...prev, creator_choice: opts[0] }));
+        setFormData(prev => ({
+          ...prev,
+          creator_choice: opts[0],
+          // ✅ auto-fill expires_at from poll close time
+          expires_at: poll.closes_at
+            ? new Date(poll.closes_at).toISOString().slice(0, 16)
+            : prev.expires_at,
+        }));
       }
     })
     .catch(console.error);
@@ -56,8 +72,12 @@ const handleSubmit = async (e) => {
       poll: formData.poll || undefined,
       opponent_username: formData.is_open ? "" : formData.opponent_username,
     };
-    await api.post("/challenges/", payload);   
-    navigate("/challenges");
+    await api.post("/challenges/", payload);
+    if (formData.poll) {
+      navigate(`/polls/${formData.poll}`);
+    } else {
+      navigate("/challenges");
+    }
   } catch (err) {
     setError(err.response?.data?.error || err.message || "Failed to create challenge");
   } finally {
@@ -222,6 +242,23 @@ const handleSubmit = async (e) => {
               </div>
 
               <div>
+  <label className="block text-sm font-medium text-gray-300 mb-2">
+    Resolution Criteria <span className="text-gray-500 font-normal">(optional)</span>
+  </label>
+  <textarea
+    name="resolution_criteria"
+    value={formData.resolution_criteria}
+    onChange={handleChange}
+    placeholder="e.g., The match must be completed. Official result from ESPN counts."
+    rows="2"
+    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-800/50 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 resize-none"
+  />
+  <p className="text-xs text-gray-500 mt-1">
+    Both parties must confirm these conditions are met before resolution is allowed.
+  </p>
+</div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Expiration Time *</label>
                 <input
                   type="datetime-local"
@@ -244,20 +281,22 @@ const handleSubmit = async (e) => {
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 px-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-cyan-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create Challenge"
-              )}
-            </button>
+<button
+  type="submit"
+  disabled={loading || formData._pollClosed}
+  className="flex-1 px-6 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:shadow-xl hover:shadow-cyan-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+>
+  {loading ? (
+    <>
+      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      Creating...
+    </>
+  ) : formData._pollClosed ? (
+    "Market Closed — Challenges Disabled"
+  ) : (
+    "Create Challenge"
+  )}
+</button>
           </div>
         </form>
       </div>

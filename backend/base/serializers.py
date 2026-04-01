@@ -56,30 +56,18 @@ class PollOptionSerializer(serializers.ModelSerializer):
 
     def get_total_shares(self, obj):
         market = obj.poll.market
-        return round(
-            market.yes_shares if obj.is_yes() else market.no_shares,
-            4
-        )
+        return round(market.shares.get(str(obj.id), 0.0), 4)
 
     def get_avg_price(self, obj):
         request = self.context.get("request")
         if not request or not request.user.is_authenticated:
             return 0
-
         position = MarketPosition.objects.filter(
-            user=request.user,
-            market=obj.poll.market
+            user=request.user, market=obj.poll.market
         ).first()
-
         if not position:
             return 0
-
-        return round(
-            position.avg_yes_price()
-            if obj.is_yes()
-            else position.avg_no_price(),
-            4
-        )
+        return round(position.avg_price_for(obj), 4)
 
     def get_pnl(self, obj):
         request = self.context.get("request")
@@ -95,14 +83,9 @@ class PollOptionSerializer(serializers.ModelSerializer):
         if not position:
             return 0
 
-        if obj.is_yes():
-            shares = position.yes_shares
-            spent = position.yes_spent
-            price = market.price_yes()
-        else:
-            shares = position.no_shares
-            spent = position.no_spent
-            price = market.price_no()
+        shares = position.shares_for(obj)
+        spent = position.spent_for(obj)
+        price = market.price_for_option(obj)
 
         value = shares * price
         return round(value - spent, 2)
@@ -493,14 +476,14 @@ class ChallengeSerializer(serializers.ModelSerializer):
     opponent_username = serializers.CharField(source='opponent.username', read_only=True)
     is_creator = serializers.SerializerMethodField()
     is_opponent = serializers.SerializerMethodField()
-    creator_choice_display = serializers.CharField(source='get_creator_choice_display', read_only=True)
+    creator_choice_display = serializers.CharField(source='creator_choice', read_only=True)
     opponent_choice = serializers.SerializerMethodField()
 
     class Meta:
         model = Challenge
         fields = [
             'id', 'creator', 'creator_username', 'opponent', 'opponent_username',
-            'amount', 'question', 'status', 'expires_at', 'winner', 'created_at',
+            'amount', 'question', 'status', 'expires_at', 'resolution_criteria','winner', 'created_at',
             'is_creator', 'is_opponent', 'creator_choice', 'creator_choice_display',
             'opponent_choice', 'is_open', 'poll',
         ]
@@ -520,38 +503,47 @@ class ChallengeSerializer(serializers.ModelSerializer):
             return next((o for o in options if o.lower() != obj.creator_choice.lower()), None)
         return None
 
+
 class ChallengeCreateSerializer(serializers.ModelSerializer):
-    opponent_username = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    opponent_username = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, default=""
+    )
     creator_choice = serializers.CharField(max_length=255)
 
     class Meta:
         model = Challenge
-        fields = ['opponent_username', 'amount', 'question', 'expires_at', 'creator_choice', 'is_open', 'poll']
+        fields = ['opponent_username', 'resolution_criteria', 'amount', 'question', 'expires_at', 
+                  'creator_choice', 'is_open', 'poll']
 
     def validate(self, data):
         is_open = data.get('is_open', False)
-        opponent_username = data.get('opponent_username', '').strip()
-        
-        if not is_open and not opponent_username:
-            raise serializers.ValidationError("Provide an opponent username or create an open challenge.")
-        if is_open and opponent_username:
-            raise serializers.ValidationError("Open challenges cannot have a specific opponent.")
+        opponent = data.get('opponent_username')  
+
+        if not is_open and not opponent:
+            raise serializers.ValidationError(
+                "Provide an opponent username or create an open challenge."
+            )
+        if is_open and opponent:
+            raise serializers.ValidationError(
+                "Open challenges cannot have a specific opponent."
+            )
         return data
 
     def validate_opponent_username(self, value):
-        if not value:
-            return None
+        if not value or not value.strip():
+            return None   # ✅ return None, not empty string
         try:
-            opponent = User.objects.get(username=value)
+            opponent = User.objects.get(username=value.strip())
         except User.DoesNotExist:
             raise serializers.ValidationError("User not found")
         if opponent == self.context['request'].user:
             raise serializers.ValidationError("You cannot challenge yourself")
-        return opponent
+        return opponent  # returns User object
 
     def create(self, validated_data):
-        opponent = validated_data.pop('opponent_username', None)
+        opponent = validated_data.pop('opponent_username', None)  # User obj or None
         validated_data['creator'] = self.context['request'].user
-        if opponent:
+        if opponent is not None:
             validated_data['opponent'] = opponent
+        # For open challenges, opponent stays null — model now allows it ✅
         return Challenge.objects.create(**validated_data)
